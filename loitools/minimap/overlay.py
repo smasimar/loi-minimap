@@ -29,6 +29,7 @@ from ..pine import PineError
 ADDR_WORLD = 0x738E94       # u8  game area id (0 = House of Sacred Remains, ...)
 ADDR_ROOM = 0x738E96        # u8  room number within the current area
 ADDR_MENU = 0x734E12        # u8  1 while the map or pause menu is open
+ADDR_SCREEN = 0x738EAC      # u32 non-zero while the map screen, Start menu or shop is open
 # Leon's actor (static). 0x792A30 / 0x792A54 hold the same values, but they belong to the camera
 # system, which stops updating while the free camera has the camera redirected.
 ADDR_POS = 0xB63430         # f32 x, y, z  player position, room-local coordinates
@@ -119,15 +120,15 @@ class Game:
     def read(self):
         """-> dict(world, room, menu, x, y, z, yaw) or None when PCSX2/game is unavailable."""
         try:
-            world, room, menu, x, y, z, yaw = self.pine.read_many(
-                [(1, ADDR_WORLD), (1, ADDR_ROOM), (1, ADDR_MENU),
+            world, room, menu, screen, x, y, z, yaw = self.pine.read_many(
+                [(1, ADDR_WORLD), (1, ADDR_ROOM), (1, ADDR_MENU), (4, ADDR_SCREEN),
                  (4, ADDR_POS), (4, ADDR_POS + 4), (4, ADDR_POS + 8), (4, ADDR_YAW)])
         except (OSError, PineError) as e:
             self.log(f"minimap: PINE read failed: {e!r}")
             return None
         self.last_log = None
         f = lambda v: struct.unpack("<f", struct.pack("<I", v))[0]
-        return {"world": world, "room": room, "menu": menu,
+        return {"world": world, "room": room, "menu": int(bool(menu or screen)),
                 "x": f(x), "y": f(y), "z": f(z), "yaw": f(yaw)}
 
 

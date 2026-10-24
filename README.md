@@ -53,7 +53,7 @@ data is kept, not the disc.
 It shows the floor you're on, drawn like the in-game map. Explored rooms are blue, save and warp
 rooms are red, unexplored rooms are dimmed, and your current room is outlined in yellow. A red
 arrow shows your position and facing. Floors and areas switch automatically, and the overlay hides
-while a menu or the map screen is open.
+while a menu, the shop or the map screen is open.
 
 **Hotkeys** (hold **Ctrl+Shift**):
 
