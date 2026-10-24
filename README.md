@@ -89,8 +89,7 @@ swings round behind Leon.
 ## Settings and data
 
 Hotkey changes are saved immediately to **`config.json`**, which has a `minimap` and a `camera`
-section. Older separate settings files (`loi_cam.json`, the minimap's own `config.json`) are
-migrated automatically.
+section.
 
 `data/` holds the extracted maps and a few files the minimap learns as you play. Both
 `config.json` and `data/` stay local (git-ignored).
@@ -121,9 +120,12 @@ Optional, in `tools/`. Close `loi_tools.py` first, since they need the PINE conn
 
 ## How it works
 
-The [wiki](https://github.com/smasimar/loi-tools/wiki/How-it-works) explains how the maps are decoded
-from the disc, how the player and explored rooms are read, what the free camera patches in the game,
-and lists the memory addresses it uses.
+The wiki explains both tools, with the memory addresses each one uses:
+
+- [How the minimap works](https://github.com/smasimar/loi-tools/wiki/How-the-minimap-works): how
+  the maps are decoded from the disc, and how the player and explored rooms are read.
+- [How the camera works](https://github.com/smasimar/loi-tools/wiki/How-the-camera-works): how the
+  free camera takes over the game's camera, and what it patches in the game.
 
 ## Project layout
 
