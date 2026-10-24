@@ -29,8 +29,10 @@ from ..pine import PineError
 ADDR_WORLD = 0x738E94       # u8  game area id (0 = House of Sacred Remains, ...)
 ADDR_ROOM = 0x738E96        # u8  room number within the current area
 ADDR_MENU = 0x734E12        # u8  1 while the map or pause menu is open
-ADDR_POS = 0x792A30         # f32 x, y, z  player position, room-local coordinates
-ADDR_YAW = 0x792A54         # f32 player facing (radians, room-local)
+# Leon's actor (static). 0x792A30 / 0x792A54 hold the same values, but they belong to the camera
+# system, which stops updating while the free camera has the camera redirected.
+ADDR_POS = 0xB63430         # f32 x, y, z  player position, room-local coordinates
+ADDR_YAW = 0xB63474         # f32 player facing (radians, room-local)
 
 # Explored rooms: the game keeps one 12-byte record per room (byte +0: flags, 0 = unexplored),
 # area after area, in a game-state block (the same layout as a save slot). 0x8060B8 points to a

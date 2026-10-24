@@ -70,8 +70,8 @@ while a menu or the map screen is open.
 The right stick orbits the camera around Leon. **R3** switches between the free camera and the
 game's own camera.
 
-While the tool runs, the right stick no longer opens the item/equipment quick menu, because the
-stick belongs to the camera. On the map screen and in the Start menu it still scrolls as usual.
+While the tool runs, neither the right stick nor R3 opens the item/equipment quick menu, because
+both belong to the camera. On the map screen and in the Start menu it still scrolls as usual.
 Opening the map or a menu doesn't lose the camera's angle. After a cutscene or a door, the camera
 swings round behind Leon.
 
@@ -115,6 +115,8 @@ Optional, in `tools/`. Close `loi_tools.py` first, since they need the PINE conn
 
 - `python tools/pine_info.py`: checks the PCSX2 connection and whether your game version is supported.
 - `python tools/extract_maps.py [iso]`: re-extracts the maps into `data/gamemap/`.
+- `python tools/restore_game.py`: puts the original camera and controls back if `loi_tools.py` was
+  killed without its normal Ctrl+C clean-up (console window closed, crash).
 
 ## How it works
 
@@ -135,7 +137,7 @@ Optional, in `tools/`. Close `loi_tools.py` first, since they need the PINE conn
     and a triangle-strip index list (`index = value/4 − 1`, bit 15 = "don't draw").
   - Most areas store the room shapes already placed on the map. Anti-Soul Mysteries Lab stores
     them in room coordinates, and they're placed by origin and rotation.
-- **The player** is read live. Position and facing are in room coordinates and are placed on the
+- **The player** is read live from Leon's actor. Position and facing are in room coordinates and are placed on the
   map with `origin + R(rotation) · local · 1.6`.
 - **Explored rooms** come from the game state. It holds one 12-byte record per room, area after
   area; byte +0 is non-zero once the room is explored. The memory card save uses the same layout.
@@ -150,8 +152,9 @@ Optional, in `tools/`. Close `loi_tools.py` first, since they need the PINE conn
   is no jitter.
 - The orbit pivots on Leon's actor position (`0xB63430`) plus 300 units of head height, because
   the game's follow logic stops while the pointer is redirected.
-- **Right stick:** the two loads in `FillPlayerInput` (`0x416438`) that fetch rx/ry are patched to
-  the centred value 0x80, so the game never sees the right stick. The patch is lifted while the
+- **Right stick:** the two loads that fetch rx/ry for `FillPlayerInput` (`0x416438`) are patched to
+  the centred value 0x80, and R3 (`0x0400`) is masked out of the held buttons it passes on
+  (`0x4164DC`), so the game never sees the right stick or R3. The patch is lifted while the
   map or a menu is open (flag `0x738EAC`). The real stick is read from libpad's buffers, which are
   found by signature at startup.
 - **Map and menus:** `SetActiveCamera` (`0x65C018`) is patched so the game's "back to gameplay
@@ -169,13 +172,12 @@ Optional, in `tools/`. Close `loi_tools.py` first, since they need the PINE conn
 | `0x738E96` | u8 | room number within the area |
 | `0x734E12` | u8 | 1 while the map or pause menu is open |
 | `0x738EAC` | u32 | non-zero while the map screen or Start menu is open |
-| `0x792A30` | f32×3 | player position (room coordinates) |
-| `0x792A54` | f32 | player facing, radians (room coordinates) |
+| `0xB63430` | f32×3 | Leon's position (room coordinates); the camera system mirrors it at `0x792A30` |
+| `0xB63474` | f32 | Leon's facing, radians (room coordinates); mirrored at `0x792A54` |
 | `0x8060B8` | u32 | pointer to the last loaded save copy; the live game state is 0x4690 bytes before it |
 | live state + `0xF44` | 12 B × room | per-room records, area after area (74, 55, 57, 65, 4, 55, 6, 10, 58 rooms); byte +0 ≠ 0 = explored |
 | `0x792880` | u32 | active camera pointer |
 | `0x792890` | 0x1A0 B | gameplay camera struct (`loitools/camera/addrs.py` lists the offsets) |
-| `0xB63430` | f32×3 | Leon's actor position (world) |
 
 The memory card save (`BASLUS-20733cvps2us`) holds the same per-room records; its slots are
 0x21D0 bytes apart.

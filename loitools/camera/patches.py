@@ -17,6 +17,10 @@ from . import addrs
 _RIGHT_STICK_SITES = [
     (0x4165B8, 0x920A000D, 0x240A0080),  # lbu t2, 0xd(s0)  ->  addiu t2, zero, 0x80   (ry)
     (0x4165D4, 0x9209000C, 0x24090080),  # lbu t1, 0xc(s0)  ->  addiu t1, zero, 0x80   (rx)
+    # FillPlayerInput hands the held buttons (standard PAD_* layout, 1 = pressed) to the button
+    # state builder at 0x415F30; masking 0x0400 (R3) there keeps R3 away from the game too, so
+    # it can't open the item/equipment quick menu. The tool reads R3 from libpad's raw buffer.
+    (0x4164DC, 0x32E5FFFF, 0x32E5FBFF),  # andi a1, s7, 0xffff  ->  andi a1, s7, 0xfbff  (R3)
 ]
 
 
@@ -84,6 +88,6 @@ class GameplayCameraRedirect(Patch):
 
 
 class RightStickMute(Patch):
-    """Hide the right stick from the game while enabled."""
+    """Hide the right stick and R3 from the game while enabled."""
 
     SITES = _RIGHT_STICK_SITES
