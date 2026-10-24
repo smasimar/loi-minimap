@@ -30,7 +30,12 @@ ADDR_WORLD = 0x738E94       # u8  game area id (0 = House of Sacred Remains, ...
 ADDR_ROOM = 0x738E96        # u8  room number within the current area
 ADDR_MENU = 0x734E12        # u8  1 while the map or pause menu is open
 ADDR_SCREEN = 0x738EAC      # u32 non-zero while the map screen, Start menu or shop is open
-STOREY = 2200.0             # room-local height of one floor (Ghostly Theatre room 16: 0 / -2200)
+# Rooms on two floors: the lower floor is at y = 0 and Leon is on the upper one above the switch
+# height (y is negative up). Ghostly Theatre rooms 8 and 16 have their upper level at -2200 and
+# below; Castle Entrance room 0 is a spiral staircase from 0 (B1F) to -7600 (1F), and the in-game
+# map switches floors at about -3630.
+FLOOR_SWITCH_Y = -1100.0
+FLOOR_SWITCH_Y_ROOM = {(6, 0): -3630.0}
 # Leon's actor (static). 0x792A30 / 0x792A54 hold the same values, but they belong to the camera
 # system, which stops updating while the free camera has the camera redirected.
 ADDR_POS = 0xB63430         # f32 x, y, z  player position, room-local coordinates
@@ -379,15 +384,16 @@ class Overlay(QWidget):
     def pick_record(self, st):
         """The room's record for where Leon is. A room that spans floors has one per floor: take
         the one whose shape he's in (a stairway's parts differ), and among stacked ones (same
-        shape on both floors) go by his height: the first record's level is at y = 0, and each
-        storey is STOREY higher (y is negative up)."""
+        shape on both floors) go by his height (see FLOOR_SWITCH_Y)."""
         recs = self.gm.rooms(st["world"], st["room"])
         if len(recs) < 2:
             return recs[0] if recs else None
         inside = [r for r in recs
                   if gamemap.inside_room(r, *gamemap.place(r, st["x"], st["z"], r["rot"], False), margin=400)]
         pool = inside or recs
-        level = recs[0]["floor"] + round(-st["y"] / STOREY)
+        floors = sorted(r["floor"] for r in recs)
+        switch = FLOOR_SWITCH_Y_ROOM.get((st["world"], st["room"]), FLOOR_SWITCH_Y)
+        level = floors[-1] if st["y"] < switch else floors[0]
         return min(pool, key=lambda r: (abs(r["floor"] - level), r["floor"] != self.floor))
 
     # --- drawing ---------------------------------------------------------------

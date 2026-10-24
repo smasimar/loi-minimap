@@ -101,9 +101,12 @@ the eye from distance/pitch/yaw and stops building the view from the eye).
   `ORIENT_CHECK` in overlay.py forces a re-check when placement logic changes.
 - **Rooms on two floors** have one record per floor (Theatre 8:8, 8:16, Garden 3:50, Castle
   Entrance 6:0, 6:1). Keys: first record `"a:r"`, others `"a:r@floor"`; every record has `"key"`.
-  `pick_record`: records whose shape contains Leon, then by height (first record at y = 0,
-  `STOREY = 2200` per floor). No game "current floor" variable was found (two rounds of
-  floor-labelled snapshots, map open and closed); the map screen probably derives it on open.
+  `pick_record`: records whose shape contains Leon, then by height: the lower floor is at y = 0,
+  the upper one above a switch height (`FLOOR_SWITCH_Y` = -1100 default; `FLOOR_SWITCH_Y_ROOM`
+  per room, e.g. 6:0 = -3630, a spiral staircase from 0 at B1F to -7600 at 1F). New odd rooms:
+  log Leon's y while the user walks it and ask where the in-game map switches.
+  No game "current floor" variable was found (two rounds of floor-labelled snapshots, map open
+  and closed); the map screen probably derives it on open.
 - Door transitions: room id switches ~1.3 s before the position; hold the last good position and
   facing while the position is unchanged since the switch.
 - Overlay attaches only to a window whose title has "Lament of Innocence" **and** whose process
