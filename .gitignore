@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+
+# personal settings and play data
+config.json
+data/
+
+# screenshots of the game
+captures/
+
+# research scratch output
+scan_state/
+*.npz
+*.bin
