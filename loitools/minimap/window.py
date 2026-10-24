@@ -2,14 +2,35 @@
 
 import ctypes
 import ctypes.wintypes as W
+import os
 
 user32 = ctypes.windll.user32
+kernel32 = ctypes.windll.kernel32
+kernel32.OpenProcess.restype = W.HANDLE
 try:
     user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))  # per-monitor v2: physical pixels
 except (AttributeError, OSError):
     pass
 
 GAME_TITLE = "Lament of Innocence"
+EMULATOR_EXE = "pcsx2"  # pcsx2-qt.exe, and older builds' pcsx2-qtx64-avx2.exe and the like
+
+
+def _exe(h):
+    """Executable name (lower case) of the process that owns window `h`, or ""."""
+    pid = W.DWORD()
+    user32.GetWindowThreadProcessId(h, ctypes.byref(pid))
+    proc = kernel32.OpenProcess(0x1000, False, pid.value)  # PROCESS_QUERY_LIMITED_INFORMATION
+    if not proc:
+        return ""
+    try:
+        buf = ctypes.create_unicode_buffer(512)
+        size = W.DWORD(len(buf))
+        if not kernel32.QueryFullProcessImageNameW(proc, 0, buf, ctypes.byref(size)):
+            return ""
+        return os.path.basename(buf.value).lower()
+    finally:
+        kernel32.CloseHandle(proc)
 
 
 def _rect(h):
@@ -31,7 +52,8 @@ def find_game_window():
         # (GetWindowText would wait on that window's message loop indefinitely).
         buf = ctypes.create_unicode_buffer(512)
         user32.InternalGetWindowText(h, buf, 512)
-        if GAME_TITLE in buf.value and user32.IsWindowVisible(h):
+        # the title alone also matches e.g. a browser tab about the game
+        if GAME_TITLE in buf.value and user32.IsWindowVisible(h) and _exe(h).startswith(EMULATOR_EXE):
             found.append(h)
         return True
 
