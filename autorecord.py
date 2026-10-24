@@ -6,7 +6,7 @@ Hooked into the overlay's tick (PCSX2 PINE allows one client, so the overlay doe
   * 1.5 s after entering a room, a snapshot is saved as "<n>_in"
   * mark() (hotkey) flags the most recent arrival as "new on the in-game map"
 
-Files go to %LOCALAPPDATA%/LoI-map/auto/: <n>_<in|out>.npz (compressed RAM 0x100000-0xA00000) and log.jsonl.
+Files go to %LOCALAPPDATA%/loi-minimap/auto/: <n>_<in|out>.npz (compressed RAM 0x100000-0xA00000) and log.jsonl.
 """
 
 import json
@@ -17,7 +17,7 @@ import time
 import numpy as np
 
 # several MB per room: keep it out of synced folders (the project lives in Dropbox)
-OUT = os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "LoI-map", "auto")
+OUT = os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "loi-minimap", "auto")
 LO, HI = 0x100000, 0xA00000   # game code/data and state; above is mostly streamed room assets
 KEEP_EVERY = 3.0              # seconds between rolling "before leaving" snapshots
 SETTLE = 1.5                  # seconds after a room change before the "after entering" snapshot

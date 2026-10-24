@@ -61,4 +61,4 @@ apart).
 - `snapper.py` – hotkey (Pause / Scroll Lock) RAM snapshots
 - `recorder.py` – timed live recording of candidate vectors
 - `autorecord.py` – optional RAM snapshots around room changes (`"record": true`)
-- `research/` – earlier experiments (Castlevania Crypt map alignment, map-screen capture, FILEDATA scans)
+- `research/ps2mc.py` – PS2 memory card image reader (used to find the explored-room records in the save)

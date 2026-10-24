@@ -472,7 +472,7 @@ class Overlay(QWidget):
         if not self.cfg["trace"]:
             return
         if not hasattr(self, "_trace_f"):
-            d = os.path.join(os.environ.get("LOCALAPPDATA", HERE), "LoI-map")
+            d = os.path.join(os.environ.get("LOCALAPPDATA", HERE), "loi-minimap")
             os.makedirs(d, exist_ok=True)
             self._trace_f = open(os.path.join(d, "trace.jsonl"), "a")
         rec = {"t": round(time.time(), 3), "area": st["world"], "room": st["room"], "menu": st["menu"],

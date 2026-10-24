@@ -1,10 +1,7 @@
-"""PCSX2 window location + screen capture + LoI map-screen detection."""
+"""Locating the PCSX2 window that runs LoI."""
 
 import ctypes
 import ctypes.wintypes as W
-
-import numpy as np
-from PIL import ImageGrab
 
 user32 = ctypes.windll.user32
 try:
@@ -58,40 +55,3 @@ def find_game_window():
 
 def is_minimized(h):
     return bool(user32.IsIconic(h))
-
-
-def grab(rect):
-    """Screen-grab `rect` and crop away letterbox bars. Returns (RGB ndarray, content_rect)."""
-    img = np.asarray(ImageGrab.grab(bbox=rect, all_screens=True).convert("RGB"))
-    bright = img.max(axis=2) > 12
-    rows, cols = np.nonzero(bright.any(axis=1))[0], np.nonzero(bright.any(axis=0))[0]
-    if len(rows) == 0:
-        return img, rect
-    t, b, l, r = rows[0], rows[-1] + 1, cols[0], cols[-1] + 1
-    return img[t:b, l:r], tuple(int(v) for v in (rect[0] + l, rect[1] + t, rect[0] + r, rect[1] + b))
-
-
-def map_mask(img):
-    """Pixels of explored-room fill: saturated pure blue."""
-    r, g, b = (img[..., i].astype(np.int16) for i in range(3))
-    return (b > 170) & (r < 60) & (g < 60)
-
-
-def marker_mask(img):
-    """Pixels of the red player marker."""
-    r, g, b = (img[..., i].astype(np.int16) for i in range(3))
-    return (r > 190) & (g < 60) & (b < 60)
-
-
-def looks_like_map(img):
-    return map_mask(img).mean() > 0.02
-
-
-def marker_pos(img):
-    """Centroid (x, y) of the red player marker in normalized [0,1] coords, or None."""
-    m = marker_mask(img)
-    if m.sum() < 30:
-        return None
-    ys, xs = np.nonzero(m)
-    h, w = m.shape
-    return float(xs.mean() / w), float(ys.mean() / h)
