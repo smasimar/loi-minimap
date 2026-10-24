@@ -1,18 +1,20 @@
 __pycache__/
 *.pyc
 
-# personal settings and play data
+# your settings and play data
 config.json
+config.json.tmp
 data/
 
-# screenshots of the game
-captures/
+# game files extracted from your own disc
+game/
+*.iso
 
-# research scratch output
+# research tools and their output (not needed to run loi_tools.py)
+research/
 scan_state/
 *.npz
 *.bin
 
-# third-person camera: game files extracted from your own disc, and your camera settings
-game/
+# old per-tool settings files (migrated into config.json)
 loi_cam.json

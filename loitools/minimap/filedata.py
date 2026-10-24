@@ -9,7 +9,7 @@ import struct
 
 import numpy as np
 
-from iso import ISO
+from .iso import ISO
 
 MAGIC = 0x82734927
 SECTOR = 2048
@@ -18,7 +18,7 @@ SECTOR = 2048
 class FileData:
     def __init__(self, iso_path=None):
         if iso_path is None:  # find it through PCSX2's game folders
-            from gamemap import find_iso
+            from .gamemap import find_iso
             iso_path = find_iso()
         self.iso = ISO(iso_path)
         rec = next(r for p, r in self.iso.walk() if p == "/FILEDATA.BIN")

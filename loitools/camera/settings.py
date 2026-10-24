@@ -1,9 +1,5 @@
-"""User-tunable camera settings, persisted to loi_cam.json next to loi_cam.py."""
-import json
-import os
+"""User-tunable camera settings, kept in the "camera" section of config.json."""
 from dataclasses import asdict, dataclass
-
-PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "loi_cam.json")
 
 
 @dataclass
@@ -36,22 +32,13 @@ class Settings:
         return (f"sens {self.sens:.1f}x | distance {self.distance:.0f} | angle/height {self.lift:.0f} "
                 f"| FoV {hfov:.0f} deg (focal {self.focal})")
 
-    def save(self):
-        try:
-            with open(PATH, "w") as f:
-                json.dump(asdict(self), f, indent=2)
-        except OSError as e:
-            print(f"could not save settings: {e}")
+    def to_dict(self):
+        return asdict(self)
 
     @classmethod
-    def load(cls):
+    def from_dict(cls, data):
         s = cls()
-        try:
-            with open(PATH) as f:
-                data = json.load(f)
-        except (OSError, ValueError):
-            return s
-        for k, v in data.items():
+        for k, v in (data or {}).items():
             if k in asdict(s):
                 setattr(s, k, type(getattr(s, k))(v))
         return s

@@ -1,11 +1,7 @@
-"""Always-on minimap overlay for Castlevania: Lament of Innocence on PCSX2.
-
-Run:  python overlay.py
-Needs PCSX2 with PINE enabled (Settings -> Advanced, slot 28011) and the game running
-in windowed or borderless mode.
+"""Minimap overlay: draws the game's own map with the player's position on top of PCSX2.
 
 The map is the game's own map data, decoded from the disc image (see gamemap.py); the
-player's room and position are read live from game memory over PINE.
+player's room, position and facing are read live from game memory over PINE.
 
 Hotkeys (global, hold Ctrl+Shift):
   M      show / hide overlay
@@ -20,17 +16,14 @@ import json
 import math
 import os
 import struct
-import sys
 import time
 
 from PySide6.QtCore import QPointF, QRect, QRectF, Qt, QTimer
 from PySide6.QtGui import QColor, QFont, QImage, QPainter, QPen
 from PySide6.QtWidgets import QApplication, QWidget
 
-from pine import Pine, PineError
-
-HERE = os.path.dirname(os.path.abspath(__file__))
-CONFIG_FILE = os.path.join(HERE, "config.json")
+from .. import DATA_DIR
+from ..pine import PineError
 
 # --- game memory (SLUS-20733, NTSC-U) -------------------------------------------
 ADDR_WORLD = 0x738E94       # u8  game area id (0 = House of Sacred Remains, ...)
@@ -62,34 +55,19 @@ DEFAULTS = {
     "explored": "game",      # "game": the game's own explored flags, "visited": rooms the overlay saw you in, "all"
     "show_unexplored": True, # draw unexplored rooms dimmed instead of hiding them
     "iso_path": None,        # LoI disc image; found through PCSX2's game folders when unset
-    "pine_slot": 28011,
-    "record": False,         # research: save RAM snapshots around room changes (autorecord.py)
-    "trace": False,          # research: log every drawn frame's position data (trace.jsonl)
+    "trace": False,          # debugging: log every drawn frame's position data (trace.jsonl)
 }
 CORNERS = ["top-left", "top-right", "bottom-right", "bottom-left"]
 OPACITIES = [1.0, 0.85, 0.65, 0.45]
 
 user32 = ctypes.windll.user32
-VK = {"M": [0x4D], "Z": [0x5A], "O": [0x4F], "C": [0x43], "N": [0x4E],
+VK = {"M": [0x4D], "Z": [0x5A], "O": [0x4F], "C": [0x43],
       "UP": [0x26, 0xBB, 0x6B], "DOWN": [0x28, 0xBD, 0x6D],  # arrow, +/- (main row, numpad)
       "LEFT": [0x25], "RIGHT": [0x27]}
 
-VISITED_FILE = os.path.join(HERE, "data", "visited.json")
-ORIENT_FILE = os.path.join(HERE, "data", "orient.json")
-HEADING_FILE = os.path.join(HERE, "data", "heading.json")
-
-
-def load_config():
-    cfg = dict(DEFAULTS)
-    if os.path.exists(CONFIG_FILE):
-        with open(CONFIG_FILE) as f:
-            cfg.update(json.load(f))
-    return cfg
-
-
-def save_config(cfg):
-    with open(CONFIG_FILE, "w") as f:
-        json.dump(cfg, f, indent=1)
+VISITED_FILE = os.path.join(DATA_DIR, "visited.json")   # rooms the overlay has seen you in
+ORIENT_FILE = os.path.join(DATA_DIR, "orient.json")     # walked positions per room (rotation check)
+HEADING_FILE = os.path.join(DATA_DIR, "heading.json")   # calibrated facing-angle convention
 
 
 def load_json(path, default):
@@ -124,11 +102,10 @@ def outlined_text(p, rect, flags, text):
 
 
 class Game:
-    """PINE reader with automatic reconnect."""
+    """Reads the player's state through the shared PINE client (which reconnects by itself)."""
 
-    def __init__(self, slot):
-        self.pine = Pine(slot, timeout=1.0)
-        self.next_try = 0
+    def __init__(self, pine):
+        self.pine = pine
         self.last_log = None
 
     def log(self, msg):
@@ -137,32 +114,23 @@ class Game:
             self.last_log = msg
 
     def read(self):
-        """-> dict(world, room, menu, x, y, z) or None when PCSX2/game is unavailable."""
-        if self.pine.sock is None:
-            if time.time() < self.next_try:
-                return None
-            try:
-                self.pine.connect()
-            except OSError as e:
-                self.log(f"PINE connect failed: {e!r}")
-                self.next_try = time.time() + 2
-                return None
+        """-> dict(world, room, menu, x, y, z, yaw) or None when PCSX2/game is unavailable."""
         try:
             world, room, menu, x, y, z, yaw = self.pine.read_many(
                 [(1, ADDR_WORLD), (1, ADDR_ROOM), (1, ADDR_MENU),
                  (4, ADDR_POS), (4, ADDR_POS + 4), (4, ADDR_POS + 8), (4, ADDR_YAW)])
         except (OSError, PineError) as e:
-            self.log(f"PINE read failed: {e!r}")
-            self.pine.close()
-            self.next_try = time.time() + 2
+            self.log(f"minimap: PINE read failed: {e!r}")
             return None
+        self.last_log = None
         f = lambda v: struct.unpack("<f", struct.pack("<I", v))[0]
         return {"world": world, "room": room, "menu": menu,
                 "x": f(x), "y": f(y), "z": f(z), "yaw": f(yaw)}
 
 
 class Overlay(QWidget):
-    def __init__(self):
+    def __init__(self, config, pine):
+        """`config`: the shared Config (its "minimap" section is used); `pine`: the shared Pine."""
         super().__init__(None, Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool
                          | Qt.WindowTransparentForInput | Qt.WindowDoesNotAcceptFocus)
         self.setAttribute(Qt.WA_TranslucentBackground)
@@ -170,13 +138,15 @@ class Overlay(QWidget):
         self.setWindowTitle("LoI minimap")
 
         # imported after QApplication exists so Qt owns the DPI-awareness setup
-        global capture, gamemap
-        import capture
-        import gamemap
+        global window, gamemap
+        from . import gamemap, window
 
-        self.cfg = load_config()
+        self.config = config
+        self.cfg = config.minimap
+        for k, v in DEFAULTS.items():
+            self.cfg.setdefault(k, v)
         self.gm = gamemap.GameMaps.load(self.cfg.get("iso_path"))
-        self.game = Game(self.cfg["pine_slot"])
+        self.game = Game(pine)
         self.state = None
         self.enabled = True
         self.status = ""
@@ -195,10 +165,6 @@ class Overlay(QWidget):
         self.game_explored = None  # set of "area:room" from the game's own flags
         self.explored_bad = 0
         self.next_explored_read = 0.0
-        self.recorder = None
-        if self.cfg["record"]:
-            import autorecord
-            self.recorder = autorecord.AutoRecorder(self.game.pine)
         self.top_hwnd, self.render_rect = None, None
         self.next_window_scan = 0
         self.keys_down = set()
@@ -246,13 +212,10 @@ class Overlay(QWidget):
             elif k in ("LEFT", "RIGHT", "C"):
                 i = CORNERS.index(c["corner"]) + (-1 if k == "LEFT" else 1)
                 c["corner"] = CORNERS[i % 4]
-            elif k == "N" and self.recorder:
-                self.recorder.mark()
-                self.flash("marked: this room was new on the in-game map", 3)
             elif k == "O":
                 i = (OPACITIES.index(c["opacity"]) + 1) if c["opacity"] in OPACITIES else 0
                 c["opacity"] = OPACITIES[i % len(OPACITIES)]
-        save_config(c)
+        self.config.save()
         self.update()
 
     # --- main loop -------------------------------------------------------------
@@ -261,21 +224,18 @@ class Overlay(QWidget):
         self.poll_hotkeys()
         now = time.time()
         if now >= self.next_window_scan:
-            self.top_hwnd, self.render_rect = capture.find_game_window()
+            self.top_hwnd, self.render_rect = window.find_game_window()
             self.next_window_scan = now + 0.25
 
         st = self.game.read()
         self.state = st
         # stay visible without game data so a connection problem shows up as a message
         visible = (self.enabled and self.top_hwnd is not None
-                   and not capture.is_minimized(self.top_hwnd) and not (st and st["menu"]))
+                   and not window.is_minimized(self.top_hwnd) and not (st and st["menu"]))
         if visible and self.cfg["hide_when_unfocused"]:
             visible = user32.GetForegroundWindow() == self.top_hwnd
 
         if st is not None:
-            if self.recorder and (st["world"], st["room"]) != getattr(self, "_rec_room", None):
-                self._rec_room = (st["world"], st["room"])
-                self.visited_before = {k: set(v) for k, v in self.visited.items()}
             seen = self.visited.setdefault(str(st["world"]), set())
             if not st["menu"] and st["room"] not in seen and self.gm.room(st["world"], st["room"]):
                 seen.add(st["room"])
@@ -285,8 +245,6 @@ class Overlay(QWidget):
             if self.cfg["explored"] == "game" and now >= self.next_explored_read:
                 self.read_explored(st)
                 self.next_explored_read = now + 1.0
-            if self.recorder:
-                self.recorder.tick(st, lambda a, r: r in self.visited_before.get(str(a), ()))
 
         if not visible:
             if self.isVisible():
@@ -475,7 +433,7 @@ class Overlay(QWidget):
         if not self.cfg["trace"]:
             return
         if not hasattr(self, "_trace_f"):
-            d = os.path.join(os.environ.get("LOCALAPPDATA", HERE), "loi-minimap")
+            d = os.path.join(os.environ.get("LOCALAPPDATA", DATA_DIR), "loi-tools")
             os.makedirs(d, exist_ok=True)
             self._trace_f = open(os.path.join(d, "trace.jsonl"), "a")
         rec = {"t": round(time.time(), 3), "area": st["world"], "room": st["room"], "menu": st["menu"],
@@ -542,16 +500,3 @@ class Overlay(QWidget):
         if self.cfg["show_status"]:
             outlined_text(p, QRectF(8, H - footer_h - 2, W - 16, footer_h), Qt.AlignLeft | Qt.AlignVCenter, footer)
         p.end()
-
-
-def main():
-    app = QApplication(sys.argv)
-    window = Overlay()  # keep a reference: an unreferenced widget is garbage-collected
-    print("LoI minimap running. Ctrl+Shift+M toggles, Ctrl+C here to quit.", flush=True)
-    import signal
-    signal.signal(signal.SIGINT, lambda *_: app.quit())
-    sys.exit(app.exec())
-
-
-if __name__ == "__main__":
-    main()

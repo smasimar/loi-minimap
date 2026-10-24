@@ -1,149 +1,193 @@
-# LoI minimap
+# loi-tools
 
-Tools for **Castlevania: Lament of Innocence** (NTSC-U, SLUS-20733) running in PCSX2, driven
-over PCSX2's PINE interface:
+Quality-of-life tools for **Castlevania: Lament of Innocence** (NTSC-U, SLUS-20733 v1.01) running
+in [PCSX2](https://pcsx2.net), in one script:
 
-- **Minimap overlay** (`overlay.py`): reads the game's memory and draws a transparent,
-  click-through minimap of the game's own map on top of the PCSX2 game view.
-- **Third-person camera** (`loi_cam.py`): a free orbit camera on the right stick. See
-  [Third-person camera](#third-person-camera).
+- **Minimap overlay**: the game's own map, always on screen, with your position and facing.
+  No need to open the map menu.
+- **Free third-person camera**: orbit the camera around Leon with the right stick.
 
-PCSX2 accepts only one PINE client at a time, so the two tools can't run together yet.
+Both work from outside the emulator. They read and write the game's memory over PCSX2's PINE
+interface, so nothing is installed into PCSX2 or the game.
 
-## Setup
+## Requirements
 
-1. PCSX2 → Settings → Advanced → **Enable PINE** (slot 28011).
-2. Run the game in windowed or borderless fullscreen (exclusive fullscreen hides overlays).
-3. `pip install -r requirements.txt`
-4. `python overlay.py`
+- Windows, PCSX2 2.x, and the NTSC-U release of LoI (SLUS-20733, CRC 28270F7D) as a disc image.
+- Python 3.10 or newer.
+- PCSX2 → Settings → Advanced → **Enable PINE** (slot 28011).
+- For the minimap, run the game windowed or borderless fullscreen. Exclusive fullscreen hides overlays.
 
-## How the map works
+```
+pip install -r requirements.txt
+```
 
-By default the overlay draws the game's **own map data**, decoded from your LoI disc image
-(`FILEDATA.BIN`; the ISO is found through PCSX2's game folders, or set `iso_path` in
-`config.json`). The 7 area maps are extracted once into `data/gamemap/`.
+## Running
 
-Each map package has a room table (game area id, room number, floor, save-room flag, room origin
-and scale) and a VIF model with every room's fill and outline. The player's room-local position
-(RAM) is placed with `origin + R * local * 1.6`, where R is the room's rotation from its record
-(+0x4C, radians); it is double-checked per room against where you walk (`data/orient.json`). Explored rooms come from the game's own flags (see below); if those can't be
-read, the overlay falls back to the rooms it has seen you in (`data/visited.json`).
+Start the game in PCSX2, then:
 
-Some maps (Anti-Soul Mysteries Lab) store room shapes in room-local coordinates; those rooms are
-placed with their origin and rotation (record +0x4C, radians) like the player.
+```
+python loi_tools.py
+```
 
-## Hotkeys (Ctrl+Shift + …)
+Both tools start. The minimap appears while PCSX2 is the active window, and the camera takes
+over as soon as you're in gameplay. **Ctrl+C** in the console quits and puts the game's original
+camera back.
+
+PCSX2 serves one PINE client at a time, so close other PINE tools first.
+
+| Option | Effect |
+|---|---|
+| `--no-camera` / `--no-minimap` | run only one of the two |
+| `--start-off` | start with the game's original camera (R3 switches to the free camera) |
+| `--distance`, `--lift`, `--focal`, `--sens` | set a camera value and save it to `config.json` |
+| `--invert-x`, `--invert-y`, `--smoothing 14` | camera options for this run |
+| `--slot N` | PINE slot, if not 28011 |
+| `--verbose` | log what the camera does |
+
+## Minimap
+
+On first run, the maps are extracted from your LoI disc image into `data/gamemap/`. The ISO is
+found through PCSX2's game folders; set `"iso_path"` in `config.json` if it isn't. Only the map
+data is kept, not the disc.
+
+It shows the floor you're on, drawn like the in-game map. Explored rooms are blue, save and warp
+rooms are red, unexplored rooms are dimmed, and your current room is outlined in yellow. A red
+arrow shows your position and facing. Floors and areas switch automatically, and the overlay hides
+while a menu or the map screen is open.
+
+**Hotkeys** (hold **Ctrl+Shift**):
 
 | Key | Action |
 |---|---|
 | M | show / hide |
-| Z | whole floor / zoomed minimap |
-| + / - (or ↑ / ↓) | bigger / smaller |
-| C (or ← / →) | move to another corner |
+| Z | whole floor / zoomed in on you |
+| + / − (or ↑ / ↓) | bigger / smaller |
+| C (or ← / →) | move to another corner of the game picture |
 | O | cycle opacity |
 
-Settings persist in `config.json`.
+## Camera
 
-## Memory addresses (SLUS-20733)
+The right stick orbits the camera around Leon. **R3** switches between the free camera and the
+game's own camera.
 
-| Address | Type | Meaning |
-|---|---|---|
-| `0x738E94` | u8 | game area id (0 HoSR, 1 ASML, 2 DPoW, 3 GFbT, 4/6/7 Castle Entrance parts, 5 Pagoda, 8 Theatre) |
-| `0x738E96` | u8 | room number within the current area |
-| `0x734E12` | u8 | 1 while the map or pause menu is open |
-| `0x792A30` | f32×3 | player x, y, z (room-local) |
-| `0x792A54` | f32 | player facing (radians, room-local) |
-| `0x8060B8` | u32 | pointer to the last loaded save copy; the live game state is 0x4690 bytes before it |
-| live state + `0xF44` | 12 B × room | per-room records, area after area (74, 55, 57, 65, 4, 55, 6, 10, 58 rooms); byte +0 ≠ 0 = explored |
+While the tool runs, the right stick no longer opens the item/equipment quick menu, because the
+stick belongs to the camera. On the map screen and in the Start menu it still scrolls as usual.
+Opening the map or a menu doesn't lose the camera's angle. After a cutscene or a door, the camera
+swings round behind Leon.
 
-The same per-room records are in the memory card save (`BASLUS-20733cvps2us`, slots 0x21D0 bytes
-apart).
-
-## Research tools
-
-- `pine.py` – PINE client (`python pine.py` prints the running game)
-- `scanner.py` – snapshot/filter/diff/watch memory scanner
-- `snapper.py` – hotkey (Pause / Scroll Lock) RAM snapshots
-- `recorder.py` – timed live recording of candidate vectors
-- `autorecord.py` – optional RAM snapshots around room changes (`"record": true`)
-- `research/ps2mc.py` – PS2 memory card image reader (used to find the explored-room records in the save)
-
-## Third-person camera
-
-Free third-person camera for **Castlevania: Lament of Innocence** (NTSC-U, SLUS-20733 v1.01,
-CRC 28270F7D), prototyped as an external tool that drives PCSX2 over PINE IPC.
-
-### Running
-
-1. PCSX2: Settings > Advanced > enable PINE (slot 28011). Only one PINE client can be
-   connected at a time.
-2. Start the game and get into gameplay.
-3. Run the tool with Python 3.10 or later and numpy:
-
-   ```
-   python loi_cam.py
-   ```
-
-Controls: the right stick orbits. **R3** switches between the free camera and the original.
-**Ctrl+C** quits and puts the original camera back.
-
-Numpad hotkeys work while PCSX2 is the focused window. Every change is saved to
-`loi_cam.json`:
+**Hotkeys** (numpad, while PCSX2 is the active window):
 
 | Keys | Adjusts |
 |---|---|
-| 4 / 6 | turn sensitivity, -/+ 0.1x |
-| 8 / 2 | distance, closer/farther by 50 |
-| 7 / 1 | angle (camera height above Leon), up/down by 25 |
-| 9 / 3 | FoV, wider/narrower (focal length -/+ 15) |
+| 4 / 6 | turn sensitivity, −/+ 0.1× |
+| 8 / 2 | distance, closer / farther by 50 |
+| 7 / 1 | angle (camera height above Leon), up / down by 25 |
+| 9 / 3 | field of view, wider / narrower |
 | 5 | reset to defaults |
 
-`--sens`, `--distance`, `--lift` and `--focal` override the saved values for that run. Other
-flags: `--invert-x`, `--invert-y`, `--smoothing 14`,
-`--verbose`, and `--demo-spin 0.5` (spins the camera with no controller input, for testing).
+## Settings and data
 
-### How it works
+Hotkey changes are saved immediately to **`config.json`**, which has a `minimap` and a `camera`
+section. Older separate settings files (`loi_cam.json`, the minimap's own `config.json`) are
+migrated automatically.
 
-- `0x792880` holds a pointer to the active camera struct (`0x792890` during gameplay). The
-  renderer and the follow logic both read the camera through this pointer. The authored rail
-  camera writes its eye straight into `0x792890`.
-- The tool copies that struct to free RAM (`0x1F80000`) and points `0x792880` at the copy.
-  The game keeps updating the copy's follow point (Leon plus head height), but nothing writes
-  its eye. Each tick the tool writes an orbit eye and both look-at fields, and the game builds
-  the view matrix from them. Nothing races the game, so there is no jitter.
-- When the pointer is redirected, the game's camera system stops updating entirely,
-  follow point included. So the tool pivots on Leon's actor position (`0xB63430`, static)
-  plus 300 units of head height.
-- While the tool is running, in either camera mode, the right stick is hidden from the game,
-  because otherwise it doubles as the d-pad item/equipment quick menu. The exception is the
-  map screen (and the Start menu), which uses the stick to scroll. The tool watches the menu
-  flag (`0x738EAC`) and passes the stick through while it is set. Gameplay input is built each frame by
-  `FillPlayerInput` (`0x416438`) from the raw stick bytes. The two loads that fetch rx and ry
-  (`0x4165D4` and `0x4165B8`) are replaced with constant 0x80, which is centred. Quitting the
-  tool restores the original instructions.
-- The map screen and the Start/status menu borrow the camera (pointer → `0x792C80`) and set the
-  menu flag at `0x738EAC`. The orbit angles are kept, and the camera resumes exactly where it
-  was when the menu closes. While the free camera is on, `SetActiveCamera` (`0x65C018`) is
-  patched so the game's own "back to gameplay camera" call selects the free camera directly.
-  So no frame is ever rendered from the gameplay camera on the way back.
-- After any other camera handover (cutscene, event), or when Leon's position jumps more than
-  250 units in one tick (a door or room change), the camera swings to directly behind him.
-  Leon's facing angle is at `0xB63470`. The swing holds for at most 0.15 s while his facing
-  catches up, and lets go as soon as he moves or the right stick is used.
-- If the pointer moves to another camera (a cutscene or event camera), the tool steps aside.
-  It takes over again when the gameplay camera comes back.
-- Pad input is read from libpad's buffers in EE RAM, found by signature at startup, so it
-  works with any controller PCSX2 supports.
+`data/` holds the extracted maps and a few files the minimap learns as you play. Both
+`config.json` and `data/` stay local (git-ignored).
 
-`loicam/addrs.py` lists every known address and struct offset.
+| Minimap setting | Default | |
+|---|---|---|
+| `corner` | `top-right` | `top-left`, `top-right`, `bottom-right`, `bottom-left` |
+| `anchor` | `image` | `image`: the game picture inside PCSX2's black bars, `view`: the whole view |
+| `size`, `margin` | 0.32, 0 | width and edge gap, as fractions of the picture width |
+| `opacity` | 0.85 | |
+| `zoom`, `zoom_factor` | false, 2.5 | zoomed-in minimap centred on you |
+| `aspect` | 4/3 | game picture aspect (PCSX2's "Auto 4:3/3:2" shows LoI at 4:3) |
+| `hide_when_unfocused` | true | hide while another window is in front |
+| `show_status` | true | area / room line under the map |
+| `explored` | `game` | `game`: the game's explored flags, `visited`: rooms the overlay saw you in, `all` |
+| `show_unexplored` | true | draw unexplored rooms dimmed instead of hiding them |
+| `iso_path` | none | your LoI disc image, if PCSX2's game folders don't have it |
+| `trace` | false | debugging: log every drawn frame's position data |
 
-### Tools
+## Helper tools
 
-- `tools/mipsdis.py <elf> <va> [n]`: a minimal R5900 disassembler.
-- `tools/dump.py <addr> [bytes]`: dumps live memory as hex and floats.
-- `tools/findvec.py eye | find x y z [tol]`: searches all 32 MB of RAM for a float vector.
-- `tools/press.py <button> [sec]`: injects a pad button press, for example `select` for the map.
-- `tools/scenario.py map_and_door`: runs the real tool logic through a map open/close and a
-  simulated room change on one PINE connection, then reports whether the camera behaved.
+Optional, in `tools/`. Close `loi_tools.py` first, since they need the PINE connection.
 
-Extract `SLUS_207.33` from your own disc into `game/`. That folder is git-ignored.
+- `python tools/pine_info.py`: checks the PCSX2 connection and whether your game version is supported.
+- `python tools/extract_maps.py [iso]`: re-extracts the maps into `data/gamemap/`.
+
+## How it works
+
+### Minimap
+
+- **The maps** come from the disc's `FILEDATA.BIN`, a chain of packages (magic `0x82734927`)
+  holding (id, type, offset, size) entries. Each area has a map package with a **room table**
+  (type 16) and a **map model** (type 14).
+  - **Room table:** one 0x60-byte record per room.
+    - `+0x00` game area id
+    - `+0x01` room number
+    - `+0x02` floor (signed)
+    - `+0x08` flags (low bits 2/3 = save/warp room)
+    - `+0x1A`/`+0x1E` outline/fill node ids
+    - `+0x40` room origin and, at `+0x4C`, rotation in radians
+    - `+0x50` scale
+  - **Map model:** PS2 VIF packet data. Each node has a vertex pool (int32 x/y/z, map units ×16)
+    and a triangle-strip index list (`index = value/4 − 1`, bit 15 = "don't draw").
+  - Most areas store the room shapes already placed on the map. Anti-Soul Mysteries Lab stores
+    them in room coordinates, and they're placed by origin and rotation.
+- **The player** is read live. Position and facing are in room coordinates and are placed on the
+  map with `origin + R(rotation) · local · 1.6`.
+- **Explored rooms** come from the game state. It holds one 12-byte record per room, area after
+  area; byte +0 is non-zero once the room is explored. The memory card save uses the same layout.
+- **Room changes:** the room number switches about 1.3 s before the position does. The arrow
+  holds its last position and facing until the new position arrives.
+
+### Camera
+
+- `0x792880` points to the active camera struct (`0x792890` during gameplay). The tool copies that
+  struct to free RAM (`0x1F80000`) and points `0x792880` at the copy. It then writes an orbit eye
+  and look-at each tick, and the game builds the view from them. Nothing races the game, so there
+  is no jitter.
+- The orbit pivots on Leon's actor position (`0xB63430`) plus 300 units of head height, because
+  the game's follow logic stops while the pointer is redirected.
+- **Right stick:** the two loads in `FillPlayerInput` (`0x416438`) that fetch rx/ry are patched to
+  the centred value 0x80, so the game never sees the right stick. The patch is lifted while the
+  map or a menu is open (flag `0x738EAC`). The real stick is read from libpad's buffers, which are
+  found by signature at startup.
+- **Map and menus:** `SetActiveCamera` (`0x65C018`) is patched so the game's "back to gameplay
+  camera" call selects the free camera directly. The orbit resumes where it was when a menu closes.
+- **Cutscenes and doors:** if the pointer moves to another camera (cutscene, event), the tool
+  steps aside and takes over again when the gameplay camera returns. After a handover or a door,
+  it swings behind Leon (facing at `0xB63470`).
+- Quitting restores the original instructions and camera pointer.
+
+### Memory addresses (SLUS-20733)
+
+| Address | Type | Meaning |
+|---|---|---|
+| `0x738E94` | u8 | game area id: 0 HoSR, 1 Anti-Soul Lab, 2 Dark Palace, 3 Garden, 4/6/7 Castle Entrance parts, 5 Pagoda, 8 Theatre |
+| `0x738E96` | u8 | room number within the area |
+| `0x734E12` | u8 | 1 while the map or pause menu is open |
+| `0x738EAC` | u32 | non-zero while the map screen or Start menu is open |
+| `0x792A30` | f32×3 | player position (room coordinates) |
+| `0x792A54` | f32 | player facing, radians (room coordinates) |
+| `0x8060B8` | u32 | pointer to the last loaded save copy; the live game state is 0x4690 bytes before it |
+| live state + `0xF44` | 12 B × room | per-room records, area after area (74, 55, 57, 65, 4, 55, 6, 10, 58 rooms); byte +0 ≠ 0 = explored |
+| `0x792880` | u32 | active camera pointer |
+| `0x792890` | 0x1A0 B | gameplay camera struct (`loitools/camera/addrs.py` lists the offsets) |
+| `0xB63430` | f32×3 | Leon's actor position (world) |
+
+The memory card save (`BASLUS-20733cvps2us`) holds the same per-room records; its slots are
+0x21D0 bytes apart.
+
+## Project layout
+
+```
+loi_tools.py          the script to run
+loitools/
+  pine.py             PINE client shared by both tools (thread-safe)
+  config.py           config.json (minimap and camera sections)
+  minimap/            overlay, map decoder (gamemap, mapmesh, vif, filedata, iso), PCSX2 window lookup
+  camera/             free camera (freecam), orbit math, pad input, code patches, hotkeys, settings
+tools/                optional helpers
+```

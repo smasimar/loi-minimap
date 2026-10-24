@@ -7,7 +7,7 @@ V3_16 normals, V2_16 uv, then V4_16 index list: idx = (value & 0x7fff)/4 - 1, bi
 
 import numpy as np
 
-import vif
+from . import vif
 
 
 def chunks(data):

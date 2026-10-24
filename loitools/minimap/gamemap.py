@@ -26,8 +26,9 @@ import struct
 
 import numpy as np
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-CACHE = os.path.join(HERE, "data", "gamemap")
+from .. import DATA_DIR
+
+CACHE = os.path.join(DATA_DIR, "gamemap")
 LOCAL_SCALE = 1.6  # mesh units per room-local unit
 ROT = [(1, 0), (0, 1), (-1, 0), (0, -1)]
 
@@ -52,7 +53,7 @@ def find_iso():
 
 def _node_chunks(model):
     """node id -> list of (positions, faces) from a type-14 map model."""
-    import mapmesh
+    from . import mapmesh
     u = np.frombuffer(model[: len(model) // 4 * 4], dtype="<u4")
     heads = [int(i) * 4 for i in np.nonzero((u[:-3] == 5) & (u[1:-2] == 0) & (u[2:-1] == 0x61) & (u[3:] == 0))[0]]
     chunks = list(mapmesh.chunks(model))
@@ -132,7 +133,7 @@ def decode_world(table, model, mesh_dir=1):
 
 
 def extract_all(iso_path):
-    from filedata import FileData
+    from .filedata import FileData
     fd = FileData(iso_path)
     os.makedirs(CACHE, exist_ok=True)
     done = set()
@@ -315,10 +316,3 @@ def render_floor(world, floor, explored=None, current=None, max_px=1400, show_un
             continue
         draw(r["outline"] + r["icons"], (CURRENT if k == current else LINE) if seen else LINE_UNEXPLORED)
     return img, (lambda x, z: ((x - x0) * s, (z - z0) * s))
-
-
-if __name__ == "__main__":
-    import sys
-    iso = sys.argv[1] if len(sys.argv) > 1 else find_iso()
-    print("ISO:", iso)
-    print("extracted worlds:", extract_all(iso))

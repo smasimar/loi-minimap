@@ -1,39 +1,31 @@
-"""Free third-person camera for Castlevania: Lament of Innocence (NTSC-U) over PCSX2 PINE.
+"""Free third-person camera: the right stick orbits the camera around Leon.
 
-Run while the game is in PCSX2 (Settings > Advanced > Enable PINE, slot 28011).
-Right stick orbits, R3 toggles between free and original camera, Ctrl+C quits and restores.
-Numpad hotkeys (while PCSX2 has focus) tune the camera; changes are saved to loi_cam.json.
+R3 toggles between the free camera and the original. Numpad hotkeys (while PCSX2 has focus)
+tune it; changes are saved to the "camera" section of config.json. See README for how it works.
 """
-import argparse
 import math
+import threading
 import time
+from dataclasses import dataclass
 
-from loicam import addrs, pad
-from loicam.hotkeys import HELP as HOTKEY_HELP, Hotkeys
-from loicam.orbit import Orbit, OrbitConfig
-from loicam.patches import GameplayCameraRedirect, RightStickMute
-from loicam.pine import Pine
-from loicam.settings import Settings
+from . import addrs, pad
+from .hotkeys import HELP as HOTKEY_HELP, Hotkeys
+from .orbit import Orbit, OrbitConfig
+from .patches import GameplayCameraRedirect, RightStickMute
+from .settings import Settings
+from ..pine import Pine, PineError
 
 
-def parse_args():
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--slot", type=int, default=28011)
-    # These override (and get saved over) loi_cam.json
-    ap.add_argument("--distance", type=float)
-    ap.add_argument("--lift", type=float, help="extra eye height (camera angle)")
-    ap.add_argument("--focal", type=int, help="focal length in pixels; lower = wider FoV (game default ~835)")
-    ap.add_argument("--sens", type=float, help="stick sensitivity multiplier")
-    ap.add_argument("--invert-x", action="store_true")
-    ap.add_argument("--invert-y", action="store_true")
-    ap.add_argument("--smoothing", type=float, default=OrbitConfig.smoothing)
-    ap.add_argument("--hz", type=float, default=240.0, help="update rate of this tool")
-    ap.add_argument("--start-off", action="store_true", help="start with the original camera")
-    ap.add_argument("--verbose", action="store_true")
-    ap.add_argument("--duration", type=float, default=0, help="quit after N seconds (testing)")
-    ap.add_argument("--demo-spin", type=float, default=0, metavar="RX",
-                    help="pretend the right stick is held at RX (-1..1), for testing hands-free")
-    return ap.parse_args()
+@dataclass
+class CameraOptions:
+    """Per-run options (command line); the tunable settings live in Settings / config.json."""
+    invert_x: bool = False
+    invert_y: bool = False
+    smoothing: float = OrbitConfig.smoothing
+    hz: float = 240.0         # update rate of the camera loop
+    start_off: bool = False   # start with the original camera (R3 turns the free camera on)
+    verbose: bool = False
+    demo_spin: float = 0.0    # testing: pretend the right stick is held at this x (-1..1)
 
 
 TELEPORT_DIST = 250.0   # Leon moves ~15 units per frame at most; a bigger jump is a room change
@@ -114,39 +106,12 @@ def apply_settings(s: Settings, cfg: OrbitConfig):
     cfg.sens, cfg.distance, cfg.lift = s.sens, s.distance, s.lift
 
 
-def main():
-    args = parse_args()
-    settings = Settings.load()
-    for name in ("sens", "distance", "lift", "focal"):
-        if getattr(args, name) is not None:
-            setattr(settings, name, getattr(args, name))
-    cfg = OrbitConfig(invert_x=args.invert_x, invert_y=args.invert_y, smoothing=args.smoothing)
-    apply_settings(settings, cfg)
-
-    with Pine(slot=args.slot, timeout=5) as p:
-        app = App(p, args, settings, cfg)
-        period = 1.0 / args.hz
-        stop_at = time.perf_counter() + args.duration if args.duration > 0 else math.inf
-        try:
-            while True:
-                now = time.perf_counter()
-                if now >= stop_at:
-                    break
-                app.tick(now)
-                sleep = period - (time.perf_counter() - now)
-                if sleep > 0:
-                    time.sleep(sleep)
-        except KeyboardInterrupt:
-            pass
-        finally:
-            app.shutdown()
-
-
 class App:
     """Everything the tool does, one tick at a time (so test scenarios can drive it too)."""
 
-    def __init__(self, p: Pine, args, settings: Settings, cfg: OrbitConfig, hotkeys=True):
-        self.p, self.args, self.settings, self.cfg = p, args, settings, cfg
+    def __init__(self, p: Pine, args: CameraOptions, settings: Settings, cfg: OrbitConfig, save, hotkeys=True):
+        """`save`: called after a hotkey changes `settings`."""
+        self.p, self.args, self.settings, self.cfg, self.save = p, args, settings, cfg, save
         gid = p.game_id()
         print(f"{p.version()} | {p.title()} [{gid}] crc {p.crc()} | {p.status()}")
         if gid != addrs.GAME_ID or p.crc().lower() != addrs.GAME_CRC:
@@ -208,7 +173,7 @@ class App:
             for name, step in actions:
                 self.settings.adjust(name, step)
             apply_settings(self.settings, self.cfg)
-            self.settings.save()
+            self.save()
             print(self.settings.describe())
 
         r3 = st.held1(pad.R3)
@@ -279,5 +244,66 @@ class App:
         print("restored original camera and right stick")
 
 
-if __name__ == "__main__":
-    main()
+class CameraThread(threading.Thread):
+    """Runs the camera in the background on the shared PINE connection.
+
+    Waits until the game is up and in gameplay (the pad buffers have to exist), starts over after
+    a lost connection, and always puts the original camera and right stick back when stopped.
+    """
+
+    def __init__(self, pine: Pine, config, options: CameraOptions):
+        super().__init__(name="camera", daemon=True)
+        self.pine, self.config, self.options = pine, config, options
+        self.settings = Settings.from_dict(config.camera)
+        self.orbit_cfg = OrbitConfig(invert_x=options.invert_x, invert_y=options.invert_y,
+                                     smoothing=options.smoothing)
+        apply_settings(self.settings, self.orbit_cfg)
+        self._stop = threading.Event()
+        self._last_msg = None
+
+    def save(self):
+        self.config.camera.update(self.settings.to_dict())
+        self.config.save()
+
+    def stop(self, timeout=3.0):
+        self._stop.set()
+        self.join(timeout)
+
+    def _say(self, msg):
+        if msg != self._last_msg:  # each kind of wait/failure once, not every retry
+            print(f"camera: {msg}", flush=True)
+            self._last_msg = msg
+
+    def run(self):
+        app = None
+        period = 1.0 / self.options.hz
+        while not self._stop.is_set():
+            now = time.perf_counter()
+            try:
+                if app is None:
+                    app = App(self.pine, self.options, self.settings, self.orbit_cfg, self.save)
+                    self._last_msg = None
+                app.tick(now)
+            except SystemExit as e:   # wrong game, or not in gameplay yet (no pad buffers)
+                self._say(f"{e}; retrying")
+                app = None
+                self._stop.wait(3.0)
+                continue
+            except (OSError, PineError, RuntimeError) as e:
+                self._say(f"waiting for PCSX2 ({e})")
+                if app is not None:
+                    try:
+                        app.shutdown()
+                    except (OSError, PineError):
+                        pass
+                    app = None
+                self._stop.wait(2.0)
+                continue
+            sleep = period - (time.perf_counter() - now)
+            if sleep > 0:
+                self._stop.wait(sleep)
+        if app is not None:
+            try:
+                app.shutdown()
+            except (OSError, PineError):
+                print("camera: could not restore the original camera (PCSX2 not reachable)")
