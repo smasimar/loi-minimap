@@ -30,7 +30,7 @@ import numpy as np
 from .. import DATA_DIR
 
 CACHE = os.path.join(DATA_DIR, "gamemap")
-CACHE_VERSION = 2  # bump when decode_world's output changes, so the maps are extracted again
+CACHE_VERSION = 3  # bump when decode_world's output changes, so the maps are extracted again
 LOCAL_SCALE = 1.6  # mesh units per room-local unit
 
 
@@ -127,9 +127,12 @@ def decode_world(table, model, mesh_dir=1):
             outline = [put(t) for t in outline]
         pts = np.array([p for t in fill for p in t] or [origin])
         (x0, z0), (x1, z1) = pts.min(0), pts.max(0)
-        rooms[f"{r[0]}:{r[1]}"] = {
-            "area": r[0], "room": r[1],
-            "floor": struct.unpack("b", r[2:3])[0],
+        # A room that spans floors has one record per floor (e.g. Ghostly Theatre room 16); the
+        # first keeps the plain "area:room" key, the others get the floor appended.
+        key = f"{r[0]}:{r[1]}"
+        floor = struct.unpack("b", r[2:3])[0]
+        rooms[key if key not in rooms else f"{key}@{floor}"] = {
+            "key": key, "area": r[0], "room": r[1], "floor": floor,
             "red": (r[8] & 7) in (2, 3),
             "origin": origin, "angle": angle, "rot": int(round(angle / (math.pi / 2))) % 4,
             "scale": [sx, sz],
@@ -179,9 +182,12 @@ class GameMaps:
             with open(path) as f:
                 w = json.load(f)
             self.worlds[w["world"]] = w
-        # (game area id, room number) -> (map world id, room key); rooms record their own area
-        self.index = {(r["area"], r["room"]): (w["world"], k)
-                      for w in self.worlds.values() for k, r in w["rooms"].items()}
+        # (game area id, room number) -> [(map world id, room key), ...], one per floor the room is
+        # on; rooms record their own area
+        self.index = collections.defaultdict(list)
+        for w in self.worlds.values():
+            for k, r in w["rooms"].items():
+                self.index[(r["area"], r["room"])].append((w["world"], k))
 
     @classmethod
     def load(cls, iso_path=None):
@@ -193,14 +199,19 @@ class GameMaps:
             extract_all(iso_path)
         return cls()
 
-    def room(self, area, room):
-        """Room record for a game area id (RAM) and room number, or None."""
-        hit = self.index.get((area, room))
-        return self.worlds[hit[0]]["rooms"][hit[1]] if hit else None
+    def rooms(self, area, room):
+        """All records of a game area id (RAM) and room number: one per floor it spans."""
+        return [self.worlds[w]["rooms"][k] for w, k in self.index.get((area, room), ())]
+
+    def room(self, area, room, floor=None):
+        """Room record for a game area id (RAM) and room number, or None. For a room on several
+        floors, the record on `floor` if there is one, else its first."""
+        recs = self.rooms(area, room)
+        return next((r for r in recs if r["floor"] == floor), recs[0] if recs else None)
 
     def world_for_area(self, area, room):
-        hit = self.index.get((area, room))
-        return self.worlds[hit[0]] if hit else None
+        hits = self.index.get((area, room))
+        return self.worlds[hits[0][0]] if hits else None
 
 
 def place(r, x, z, rot, mirror):
@@ -338,15 +349,15 @@ def render_floor(world, floor, explored=None, current=None, max_px=1400, show_un
         shape = path.simplified()
         qp.fillPath(shape.united(stroker.createStroke(shape)), QColor(*color))
 
-    for k, r in rooms.items():
-        seen = explored is None or k in explored
+    for r in rooms.values():
+        seen = explored is None or r["key"] in explored
         if not seen and not show_unexplored:
             continue
         draw(r["fill"], (FILL_RED if r["red"] else FILL) if seen else FILL_UNEXPLORED)
-    for k, r in rooms.items():
-        seen = explored is None or k in explored
+    for r in rooms.values():
+        seen = explored is None or r["key"] in explored
         if not seen and not show_unexplored:
             continue
-        draw(r["outline"] + r["icons"], (CURRENT if k == current else LINE) if seen else LINE_UNEXPLORED)
+        draw(r["outline"] + r["icons"], (CURRENT if r["key"] == current else LINE) if seen else LINE_UNEXPLORED)
     qp.end()
     return img, (lambda x, z: ((x - x0) * s, (z - z0) * s))

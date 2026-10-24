@@ -30,6 +30,7 @@ ADDR_WORLD = 0x738E94       # u8  game area id (0 = House of Sacred Remains, ...
 ADDR_ROOM = 0x738E96        # u8  room number within the current area
 ADDR_MENU = 0x734E12        # u8  1 while the map or pause menu is open
 ADDR_SCREEN = 0x738EAC      # u32 non-zero while the map screen, Start menu or shop is open
+STOREY = 2200.0             # room-local height of one floor (Ghostly Theatre room 16: 0 / -2200)
 # Leon's actor (static). 0x792A30 / 0x792A54 hold the same values, but they belong to the camera
 # system, which stops updating while the free camera has the camera redirected.
 ADDR_POS = 0xB63430         # f32 x, y, z  player position, room-local coordinates
@@ -156,6 +157,7 @@ class Overlay(QWidget):
         self.status = ""
         self.status_until = 0
         self.game_view = None  # (key, qimage, to_px) of the floor currently drawn
+        self.floor = None      # floor last shown: picks the record of a room that spans floors
         self.visited = {k: set(v) for k, v in load_json(VISITED_FILE, {}).items()}  # area -> rooms
         self.orient = load_json(ORIENT_FILE, {})  # "area:room" -> {"samples", "orient", "score"}
         self.room_since = (None, 0.0)  # (area, room) and when we entered it
@@ -296,9 +298,10 @@ class Overlay(QWidget):
             return
         if st["menu"] or now - self.room_since[1] < 1.0:  # skip room-load transients
             return
-        r = self.gm.room(*key)
-        if r is None:
-            return
+        recs = self.gm.rooms(*key)
+        if not recs or len({(tuple(x["origin"]), x["angle"]) for x in recs}) > 1:
+            return  # unknown, or placed differently per floor (one sample set can't check both)
+        r = recs[0]
         rec = self.orient.setdefault(f"{key[0]}:{key[1]}", {"samples": []})
         sm = rec["samples"]
         added = len(sm) < 80 and not (sm and min(math.hypot(st["x"] - a, st["z"] - b) for a, b in sm[-20:]) < 150)
@@ -373,16 +376,31 @@ class Overlay(QWidget):
             return (rec["override"], False)
         return None
 
+    def pick_record(self, st):
+        """The room's record for where Leon is. A room that spans floors has one per floor: take
+        the one whose shape he's in (a stairway's parts differ), and among stacked ones (same
+        shape on both floors) go by his height: the first record's level is at y = 0, and each
+        storey is STOREY higher (y is negative up)."""
+        recs = self.gm.rooms(st["world"], st["room"])
+        if len(recs) < 2:
+            return recs[0] if recs else None
+        inside = [r for r in recs
+                  if gamemap.inside_room(r, *gamemap.place(r, st["x"], st["z"], r["rot"], False), margin=400)]
+        pool = inside or recs
+        level = recs[0]["floor"] + round(-st["y"] / STOREY)
+        return min(pool, key=lambda r: (abs(r["floor"] - level), r["floor"] != self.floor))
+
     # --- drawing ---------------------------------------------------------------
 
     def view(self, st):
         """-> (qimage, player px or None, facing (dx, dy) or None, note); qimage None if nothing to draw."""
-        room = self.gm.room(st["world"], st["room"]) if st else None
+        room = self.pick_record(st) if st else None
         if room is None:
             # no map data for this room (cutscene, menu, unknown area): keep the last floor, no dot
             note = (f"no map data for area {st['world']} room {st['room']}" if st
                     else "Connecting to PCSX2 (PINE)... is the game running with PINE enabled?")
             return (self.game_view[1] if self.game_view else None), None, None, note
+        self.floor = room["floor"]
         w = self.gm.world_for_area(st["world"], st["room"])
         explored = None
         if self.cfg["explored"] == "game" and self.game_explored is not None:
@@ -501,7 +519,11 @@ class Overlay(QWidget):
                 p.setBrush(QColor(230, 30, 30))
                 p.drawPolygon([tip, left, notch, right])
 
-        footer = f"area {st['world']} room {st['room']}" + (f" - {note}" if note else "") if st else ""
+        where = f"area {st['world']} room {st['room']}" if st else ""
+        if st and img is not None and not note and self.floor is not None:
+            # same naming as the in-game map: floor 0 = 1F, -1 = B1F
+            where += f" {self.floor + 1}F" if self.floor >= 0 else f" B{-self.floor}F"
+        footer = where + (f" - {note}" if note else "") if st else ""
         if time.time() < self.status_until:
             footer = self.status
         if self.cfg["show_status"]:
