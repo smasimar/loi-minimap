@@ -52,8 +52,9 @@ data is kept, not the disc.
 
 It shows the floor you're on, drawn like the in-game map. Explored rooms are blue, save and warp
 rooms are red, unexplored rooms are dimmed, and your current room is outlined in yellow. A red
-arrow shows your position and facing. Floors and areas switch automatically, and the overlay hides
-while a menu, the shop or the map screen is open.
+arrow shows your position and facing. Floors and areas switch automatically, also inside rooms that
+span two floors, and the overlay hides while a menu, the shop or the map screen is open. The line
+under the map shows the area, room and floor (e.g. `area 8 room 16 2F`, named like the in-game map).
 
 **Hotkeys** (hold **Ctrl+Shift**):
 
@@ -103,7 +104,7 @@ section.
 | `zoom`, `zoom_factor` | false, 2.5 | zoomed-in minimap centred on you |
 | `aspect` | 4/3 | game picture aspect (PCSX2's "Auto 4:3/3:2" shows LoI at 4:3) |
 | `hide_when_unfocused` | true | hide while another window is in front |
-| `show_status` | true | area / room line under the map |
+| `show_status` | true | area / room / floor line under the map |
 | `explored` | `game` | `game`: the game's explored flags, `visited`: rooms the overlay saw you in, `all` |
 | `show_unexplored` | true | draw unexplored rooms dimmed instead of hiding them |
 | `iso_path` | none | your LoI disc image, if PCSX2's game folders don't have it |
