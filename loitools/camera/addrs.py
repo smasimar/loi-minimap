@@ -27,6 +27,13 @@ CAM_INV_VIEW = 0xF0   # 4x4 view->world (row 3 = eye)
 CAM_FOCAL = 0x174     # int, current focal length in pixels (eases toward CAM_FOCAL_TARGET);
 CAM_FOCAL_TARGET = 0x178  # copied to SCREEN+0x40 for the projection. Lower = wider FoV.
                           # 835 is ~42 deg horizontal over 640 px; rooms author their own.
+CAM_FOLLOWING = 0x190  # u8: 1 while the camera follows Leon (the game rewrites it every frame);
+                       # cutscenes set it to 0 on whatever camera CAM_PTR points at.
+CAM_MODE = 0x3E0      # u32. Non-zero (cutscene / scripted cameras write 1 or 2 into whatever camera
+                      # CAM_PTR points at) makes the game build the eye from distance/pitch/yaw at
+                      # +0x18/+0x20/+0x24 and stop building the view from the eye. Must stay 0 on
+                      # the free camera.
+CAM_STRIDE = 0x3F0    # full struct size: cameras sit 0x3F0 apart (SetActiveCamera)
 
 # While CAM_PTR is redirected the game's camera system stops updating altogether (including the
 # follow point), so the pivot has to come from Leon himself.

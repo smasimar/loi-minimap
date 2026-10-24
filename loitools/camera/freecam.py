@@ -56,7 +56,10 @@ class FreeCam:
               "behind" - swing round behind Leon (after cutscenes / other camera handovers)
         """
         if copy:
-            self.p.write_block(addrs.SCRATCH_CAM, self.p.read_block(addrs.GAMEPLAY_CAM, addrs.CAM_SIZE))
+            # The rest of the struct is cleared: game code that ran while CAM_PTR pointed here
+            # (cutscenes) may have left a camera mode behind, and that survives save loads.
+            cam = self.p.read_block(addrs.GAMEPLAY_CAM, addrs.CAM_SIZE)
+            self.p.write_block(addrs.SCRATCH_CAM, cam + bytes(addrs.CAM_STRIDE - addrs.CAM_SIZE))
         if mode == "align":
             eye = self.p.read_floats(addrs.GAMEPLAY_CAM + addrs.CAM_EYE, 3)
             self.orbit.align_to(eye, follow_point(self.p.read_floats(addrs.LEON_POS, 3)))
@@ -79,6 +82,7 @@ class FreeCam:
         i_leon = b.read_floats(addrs.LEON_POS, 3)
         i_rot = b.read_floats(addrs.LEON_ROT, 3)
         i_map = b.read_u32(addrs.MAP_OPEN)
+        i_follow = {c: b.read_u32(c + addrs.CAM_FOLLOWING) for c in (addrs.GAMEPLAY_CAM, addrs.SCRATCH_CAM)}
         i_pads = [b.read_bytes(a, 8) for a in self.pad_addrs]
         r = b.run()
         # All buffers are copies of the same input at different stages; take the most deflected.
@@ -89,7 +93,10 @@ class FreeCam:
             held1 |= s.buttons1
             held2 |= s.buttons2
         st.buttons1, st.buttons2 = held1, held2
-        return r[i_ptr], r[i_leon], r[i_rot][1], st, r[i_map] != 0
+        ptr = r[i_ptr]
+        # a cutscene drives the active camera itself (see addrs.CAM_FOLLOWING)
+        cutscene = ptr in i_follow and (r[i_follow[ptr]] & 0xFF) == 0
+        return ptr, r[i_leon], r[i_rot][1], st, r[i_map] != 0, cutscene
 
     def write(self, eye, look):
         b = self.p.batch()
@@ -99,6 +106,7 @@ class FreeCam:
         b.write_floats(addrs.SCRATCH_CAM + addrs.CAM_LOOK_B, look)
         b.write_u32(addrs.SCRATCH_CAM + addrs.CAM_FOCAL, self.settings.focal)
         b.write_u32(addrs.SCRATCH_CAM + addrs.CAM_FOCAL_TARGET, self.settings.focal)
+        b.write_u32(addrs.SCRATCH_CAM + addrs.CAM_MODE, 0)  # see addrs.CAM_MODE
         b.run()
 
 
@@ -145,6 +153,7 @@ class App:
             self.redirect.enable()
         self.r3_was = False
         self.rejoin = "align"     # how to pick the orbit up when the gameplay camera comes back
+        self.after_cutscene = False  # the scratch camera was driven by a cutscene: copy it afresh
         self.prev_leon = None
         self.settle_until = 0.0
         self.settle_from = None
@@ -156,7 +165,7 @@ class App:
         dt = 0.0 if self.last is None else min(now - self.last, 0.1)
         self.last = now
 
-        ptr, leon, facing, st, map_open = cam.poll()
+        ptr, leon, facing, st, map_open, cutscene = cam.poll()
         follow = follow_point(leon)
 
         # The map screen (scrolling) and the realtime Orb / Relic menus (held L1 / L2) need the
@@ -195,12 +204,22 @@ class App:
         if self.want_on and not cam.active and map_open:
             self.rejoin = "resume"   # the map borrowed the camera; come back where we were
 
-        if self.want_on and not cam.active and ptr in (addrs.GAMEPLAY_CAM, addrs.SCRATCH_CAM):
-            cam.engage(self.rejoin, facing, copy=ptr == addrs.GAMEPLAY_CAM)
+        # Some cutscenes don't switch cameras but take over the active one (the free camera's).
+        # Leave it to them, pointer and all, and start afresh once Leon is followed again.
+        if cam.active and cutscene:
+            cam.active = False
+            self.rejoin, self.after_cutscene = "behind", True
+            if args.verbose:
+                print("cutscene; yielding")
+
+        if self.want_on and not cam.active and not cutscene and ptr in (addrs.GAMEPLAY_CAM, addrs.SCRATCH_CAM):
+            copy = ptr == addrs.GAMEPLAY_CAM or self.after_cutscene
+            cam.engage(self.rejoin, facing, copy=copy)
+            self.after_cutscene = False
             if self.rejoin == "behind":
                 self.start_settle(now, leon, facing)
             if args.verbose:
-                print(f"engaged ({self.rejoin}, {'copied' if ptr == addrs.GAMEPLAY_CAM else 'handed back'})")
+                print(f"engaged ({self.rejoin}, {'copied' if copy else 'handed back'})")
             ptr = addrs.SCRATCH_CAM
         elif cam.active and (not self.want_on or ptr != addrs.SCRATCH_CAM):
             # Off, or the game switched to another camera (map, cutscene, event): step aside
