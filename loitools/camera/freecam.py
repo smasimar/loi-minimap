@@ -159,12 +159,17 @@ class App:
         ptr, leon, facing, st, map_open = cam.poll()
         follow = follow_point(leon)
 
-        # The map screen needs the right stick (scrolling); everywhere else it is hidden from
-        # the game so it can't open the item/equipment quick menu.
-        if map_open and self.mute.enabled:
+        # The map screen (scrolling) and the realtime Orb / Relic menus (held L1 / L2) need the
+        # right stick; everywhere else it is hidden from the game so it can't open the
+        # item/equipment quick menu. While a realtime menu is up the camera leaves the stick alone.
+        menu_held = st.held2(pad.L1) or st.held2(pad.L2)
+        game_stick = map_open or menu_held
+        if game_stick and self.mute.enabled:
             self.mute.disable()
-        elif not map_open and not self.mute.enabled:
+        elif not game_stick and not self.mute.enabled:
             self.mute.enable()
+        if menu_held:
+            st.rx = st.ry = 0.0
         if args.demo_spin:
             st.rx = args.demo_spin
 

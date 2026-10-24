@@ -71,7 +71,8 @@ The right stick orbits the camera around Leon. **R3** switches between the free 
 game's own camera.
 
 While the tool runs, neither the right stick nor R3 opens the item/equipment quick menu, because
-both belong to the camera. On the map screen and in the Start menu it still scrolls as usual.
+both belong to the camera. On the map screen and in the Start menu it still scrolls as usual, and
+while you hold L1 (Orb menu) or L2 (Relic menu) it picks from the menu while the camera holds still.
 Opening the map or a menu doesn't lose the camera's angle. After a cutscene or a door, the camera
 swings round behind Leon.
 
