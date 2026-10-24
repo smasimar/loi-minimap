@@ -19,7 +19,7 @@ import struct
 import time
 
 from PySide6.QtCore import QPointF, QRect, QRectF, Qt, QTimer
-from PySide6.QtGui import QColor, QFont, QImage, QPainter, QPen
+from PySide6.QtGui import QColor, QFont, QPainter, QPen
 from PySide6.QtWidgets import QApplication, QWidget
 
 from .. import DATA_DIR
@@ -69,6 +69,7 @@ VK = {"M": [0x4D], "Z": [0x5A], "O": [0x4F], "C": [0x43],
 
 VISITED_FILE = os.path.join(DATA_DIR, "visited.json")   # rooms the overlay has seen you in
 ORIENT_FILE = os.path.join(DATA_DIR, "orient.json")     # walked positions per room (rotation check)
+ORIENT_CHECK = 3  # bump when room placement changes, so rooms with saved samples are re-checked
 HEADING_FILE = os.path.join(DATA_DIR, "heading.json")   # calibrated facing-angle convention
 
 
@@ -299,18 +300,22 @@ class Overlay(QWidget):
             return
         rec = self.orient.setdefault(f"{key[0]}:{key[1]}", {"samples": []})
         sm = rec["samples"]
-        if len(sm) >= 80 or (sm and min(math.hypot(st["x"] - a, st["z"] - b) for a, b in sm[-20:]) < 150):
+        added = len(sm) < 80 and not (sm and min(math.hypot(st["x"] - a, st["z"] - b) for a, b in sm[-20:]) < 150)
+        if added:
+            sm.append([round(st["x"], 1), round(st["z"], 1)])
+        recheck = len(sm) >= 8 and rec.get("check") != ORIENT_CHECK
+        if not (added and len(sm) in (8, 12, 16, 24, 32, 48, 64, 80)) and not recheck:
+            if added:
+                save_json(ORIENT_FILE, self.orient)
             return
-        sm.append([round(st["x"], 1), round(st["z"], 1)])
-        if len(sm) in (8, 12, 16, 24, 32, 48, 64, 80):
-            res = gamemap.check_orientation(r, sm)
-            if res:
-                override, own, best = res
-                old = rec.get("override")
-                rec["override"], rec["fit"] = override, round(own, 3)
-                if override is not None and override != old:
-                    self.flash(f"room {key[1]}: rotation corrected to {override} "
-                               f"({best:.0%} of path inside vs {own:.0%})", 5)
+        res = gamemap.check_orientation(r, sm)
+        if res:
+            override, own, best = res
+            old = rec.get("override")
+            rec["override"], rec["fit"], rec["check"] = override, round(own, 3), ORIENT_CHECK
+            if override is not None and override != old:
+                self.flash(f"room {key[1]}: rotation corrected to {override} "
+                           f"({best:.0%} of path inside vs {own:.0%})", 5)
         save_json(ORIENT_FILE, self.orient)
 
     def read_explored(self, st):
@@ -386,13 +391,12 @@ class Overlay(QWidget):
         cur = f"{st['world']}:{st['room']}"
         key = (w["world"], room["floor"], cur, len(explored or ()), self.cfg["show_unexplored"])
         if self.game_view is None or self.game_view[0] != key:
-            arr, to_px = gamemap.render_floor(w, room["floor"], explored, current=cur,
-                                              show_unexplored=self.cfg["show_unexplored"])
-            qi = QImage(arr.data, arr.shape[1], arr.shape[0], arr.strides[0], QImage.Format_RGBA8888).copy()
+            qi, to_px = gamemap.render_floor(w, room["floor"], explored, current=cur,
+                                             show_unexplored=self.cfg["show_unexplored"])
             self.game_view = (key, qi, to_px)
         _, qi, to_px = self.game_view
         orient = self.room_orient(st["world"], st["room"]) or (room["rot"], False)
-        mx, mz = self.gm.player_pos(st["world"], st["room"], st["x"], st["z"], orient)
+        mx, mz = gamemap.place(room, st["x"], st["z"], *orient)
         facing = gamemap.map_direction(room, *gamemap.HEADINGS[self.heading](st["yaw"]), *orient)
         # During a room transition the room number and position update on different frames,
         # so the position briefly belongs to the other room. Hold the last good spot until the

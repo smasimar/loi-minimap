@@ -11,7 +11,8 @@ Each area ("world") has a map package with
   * a type-14 VIF model: map geometry in map units x16 (z negated), split into nodes.
 
 Player position: map = origin + R * (local_x * sx, -local_z * sz) * 1.6, where R is the room's
-rotation (+0x4C, quarter turns).
+rotation (+0x4C). Most rooms are turned by quarter turns, but not all: much of the Dark Palace is
+at 45 degrees, and the Pagoda and Castle Entrance have odd angles.
 
 The decoded maps are cached as JSON in data/gamemap/, so the ISO is only needed once.
 """
@@ -29,8 +30,8 @@ import numpy as np
 from .. import DATA_DIR
 
 CACHE = os.path.join(DATA_DIR, "gamemap")
+CACHE_VERSION = 2  # bump when decode_world's output changes, so the maps are extracted again
 LOCAL_SCALE = 1.6  # mesh units per room-local unit
-ROT = [(1, 0), (0, 1), (-1, 0), (0, -1)]
 
 
 # --- extraction --------------------------------------------------------------------
@@ -87,6 +88,14 @@ def _looks_local(fill, origin):
     return far > 2000 and x0 >= -400 and z1 <= 400
 
 
+def _cos_sin(angle):
+    """cos and sin of a room angle, exact for quarter turns (stored rounded, e.g. 1.5708)."""
+    q = round(angle / (math.pi / 2))
+    if abs(angle - q * math.pi / 2) < 1e-3:
+        return [(1, 0), (0, 1), (-1, 0), (0, -1)][q % 4]
+    return math.cos(angle), math.sin(angle)
+
+
 def decode_world(table, model, mesh_dir=1):
     n = struct.unpack_from("<I", table, 0x24)[0]
     world = struct.unpack_from("<h", table, 0x28)[0]
@@ -101,16 +110,14 @@ def decode_world(table, model, mesh_dir=1):
         outline = _tris([p for v in r[0x1A:0x1A + cnt] for p in nodes.get(v, [])])
         px, _, pz, angle = struct.unpack_from("<4f", r, 0x40)
         sx, _, sz = struct.unpack_from("<3f", r, 0x50)
-        raw.append((r, fill, outline, [px * 16, -pz * 16],
-                    int(round(angle / (math.pi / 2))) % 4,  # rotation (+0x4C, radians) in quarter turns
-                    sx or 1.0, sz or 1.0))
+        raw.append((r, fill, outline, [px * 16, -pz * 16], angle, sx or 1.0, sz or 1.0))
     # Some maps (e.g. Anti-Soul Mysteries Lab) store every room shape in room-local coordinates
     # instead of already placed on the map. Decide per map: a room near (0, 0) can look placed.
     local = bool(sum(_looks_local(f, org) for _, f, _, org, *_ in raw) > len(raw) / 2)
     rooms = {}
-    for r, fill, outline, origin, rot, sx, sz in raw:
+    for r, fill, outline, origin, angle, sx, sz in raw:
         if local:
-            c, s_ = ROT[rot]
+            c, s_ = _cos_sin(angle)
             s_ *= mesh_dir
 
             def put(t):
@@ -124,12 +131,14 @@ def decode_world(table, model, mesh_dir=1):
             "area": r[0], "room": r[1],
             "floor": struct.unpack("b", r[2:3])[0],
             "red": (r[8] & 7) in (2, 3),
-            "origin": origin, "rot": rot, "scale": [sx, sz],
+            "origin": origin, "angle": angle, "rot": int(round(angle / (math.pi / 2))) % 4,
+            "scale": [sx, sz],
             "bbox": [int(x0), int(z0), int(x1), int(z1)],
             "fill": fill, "outline": outline, "icons": [],  # +0x20..0x2F: extra nodes, not understood yet
         }
     floors = sorted({r["floor"] for r in rooms.values()})
-    return {"world": world, "floors": floors, "rooms": rooms, "local_shapes": local}
+    return {"version": CACHE_VERSION, "world": world, "floors": floors, "rooms": rooms,
+            "local_shapes": local}
 
 
 def extract_all(iso_path):
@@ -176,7 +185,8 @@ class GameMaps:
 
     @classmethod
     def load(cls, iso_path=None):
-        if not glob.glob(os.path.join(CACHE, "world_*.json")):
+        if not glob.glob(os.path.join(CACHE, "world_*.json")) or any(
+                w.get("version") != CACHE_VERSION for w in cls().worlds.values()):
             iso_path = iso_path or find_iso()
             if not iso_path:
                 raise FileNotFoundError("LoI ISO not found; set iso_path in config.json")
@@ -192,23 +202,14 @@ class GameMaps:
         hit = self.index.get((area, room))
         return self.worlds[hit[0]] if hit else None
 
-    def player_pos(self, world, room, x, z, orient=None):
-        """Room-local player position -> map (mesh) coordinates, or None.
-
-        `orient` = (rot, mirror) overrides the corner-derived default (rot, False).
-        """
-        r = self.room(world, room)
-        if r is None:
-            return None
-        rot, mirror = orient if orient else (r["rot"], False)
-        return place(r, x, z, rot, mirror)
-
 
 def place(r, x, z, rot, mirror):
+    """Room-local position -> map position. `rot` is the room's rotation in quarter turns: the
+    record's own `rot` uses its exact angle, any other value turns the room from there."""
     lx, lz = x * r["scale"][0], -z * r["scale"][1]
     if mirror:
         lx, lz = -lz, -lx  # swap axes (reflection across the room's diagonal)
-    c, s = ROT[rot]
+    c, s = _cos_sin(r["angle"] + (rot - r["rot"]) * math.pi / 2)
     return (r["origin"][0] + LOCAL_SCALE * (c * lx - s * lz),
             r["origin"][1] + LOCAL_SCALE * (s * lx + c * lz))
 
@@ -231,29 +232,46 @@ def map_direction(r, dx, dz, rot, mirror):
     return (x1 - x0) / n, (z1 - z0) / n
 
 
+def _fill_tris(r):
+    """The room's fill triangles as an (n, 3, 2) array, cached on the room."""
+    tris = r.get("_tris")
+    if tris is None:
+        tris = r["_tris"] = np.array([t for t in r["fill"] if len(t) == 3], float).reshape(-1, 3, 2)
+    return tris
+
+
+def _near_tris(tris, pts, margin):
+    """For each point in `pts` (m, 2): True if it is inside one of `tris` (n, 3, 2), or closer
+    than `margin` to one."""
+    p = pts[:, None, :]                                   # (m, 1, 2)
+    a, b = tris, np.roll(tris, -1, axis=1)                # edges a[k] -> b[k], (n, 3, 2)
+    ab = (b - a)[None]                                    # (1, n, 3, 2)
+    ap = p[:, :, None, :] - a[None]                       # (m, n, 3, 2)
+    cross = ab[..., 0] * ap[..., 1] - ab[..., 1] * ap[..., 0]
+    inside = (cross > 0).all(-1) | (cross < 0).all(-1)    # (m, n)
+    if margin > 0:
+        t = np.clip((ap * ab).sum(-1) / np.maximum((ab * ab).sum(-1), 1e-12), 0, 1)
+        d = np.hypot(*np.moveaxis(ap - t[..., None] * ab, -1, 0)).min(-1)
+        inside |= d < margin
+    return inside.any(-1)
+
+
 def inside_room(r, x, z, margin=0):
     """True if map point (x, z) is within `margin` mesh units of the room's shape."""
-    import cv2
     x0, z0, x1, z1 = r["bbox"]
     if not (x0 - margin <= x <= x1 + margin and z0 - margin <= z <= z1 + margin):
         return False
-    tris = r.get("_tris")
-    if tris is None:
-        tris = r["_tris"] = [np.array(t, np.float32) for t in r["fill"]]
-    return any(cv2.pointPolygonTest(t, (float(x), float(z)), True) > -margin for t in tris)
+    return bool(_near_tris(_fill_tris(r), np.array([[x, z]], float), margin)[0])
 
 
 def path_inside(r, samples, rot):
     """Fraction of observed room-local positions that land inside the room's shape with `rot`."""
-    import cv2
-    tris = [np.array(t, np.float32) for t in r["fill"]]
     x0, z0, x1, z1 = r["bbox"]
-    inside = 0
-    for x, z in samples:
-        px, pz = place(r, x, z, rot, False)
-        if x0 - 200 <= px <= x1 + 200 and z0 - 200 <= pz <= z1 + 200 and                 any(cv2.pointPolygonTest(t, (px, pz), True) > -150 for t in tris):
-            inside += 1
-    return inside / len(samples)
+    pts = np.array([place(r, x, z, rot, False) for x, z in samples], float)
+    ok = (pts[:, 0] >= x0 - 200) & (pts[:, 0] <= x1 + 200) & (pts[:, 1] >= z0 - 200) & (pts[:, 1] <= z1 + 200)
+    if ok.any():
+        ok[ok] = _near_tris(_fill_tris(r), pts[ok], 150)
+    return ok.sum() / len(samples)
 
 
 def check_orientation(r, samples):
@@ -282,10 +300,11 @@ CURRENT = (255, 220, 60, 255)
 def render_floor(world, floor, explored=None, current=None, max_px=1400, show_unexplored=True):
     """Draw one floor like the in-game map.
 
-    Returns (rgba ndarray, to_px) where to_px(x, z) maps mesh coordinates to image pixels.
+    Returns (QImage, to_px) where to_px(x, z) maps mesh coordinates to image pixels.
     `explored`: set of room keys "area:room" (None = all explored); `current`: room key.
     """
-    import cv2
+    from PySide6.QtCore import QPointF, Qt
+    from PySide6.QtGui import QColor, QImage, QPainter, QPainterPath, QPainterPathStroker, QPolygonF
     rooms = {k: r for k, r in world["rooms"].items() if r["floor"] == floor}
     pts = np.array([p for r in rooms.values() for t in r["fill"] + r["outline"] for p in t])
     (x0, z0), (x1, z1) = pts.min(0), pts.max(0)
@@ -293,17 +312,31 @@ def render_floor(world, floor, explored=None, current=None, max_px=1400, show_un
     x0, z0, x1, z1 = x0 - pad, z0 - pad, x1 + pad, z1 + pad
     s = max_px / max(x1 - x0, z1 - z0)
     w, h = int((x1 - x0) * s) + 1, int((z1 - z0) * s) + 1
-    img = np.zeros((h, w, 4), np.uint8)
-    SH = 4  # sub-pixel precision for cv2
-
-    def poly(t):
-        return (np.array([[(p[0] - x0) * s, (p[1] - z0) * s] for p in t]) * (1 << SH)).astype(np.int32)
+    img = QImage(w, h, QImage.Format_ARGB32_Premultiplied)
+    img.fill(Qt.transparent)
+    qp = QPainter(img)
+    qp.setRenderHint(QPainter.Antialiasing)
+    stroker = QPainterPathStroker()
+    stroker.setWidth(1.0)
+    stroker.setJoinStyle(Qt.MiterJoin)
 
     def draw(tris, color):
-        # one call per triangle: fillPoly with several polygons fills even-odd, so
-        # overlapping triangles (common in outline strips) would cancel each other out
+        # all of a room's triangles as one path, so shared edges don't leave antialiasing seams;
+        # triangles are wound the same way so overlaps (common in outline strips) stay filled
+        path = QPainterPath()
+        path.setFillRule(Qt.WindingFill)
         for t in tris:
-            cv2.fillConvexPoly(img, poly(t), color, lineType=cv2.LINE_AA, shift=SH)
+            pts = [QPointF((p[0] - x0) * s, (p[1] - z0) * s) for p in t]
+            if len(pts) == 3 and ((pts[1].x() - pts[0].x()) * (pts[2].y() - pts[0].y())
+                                  - (pts[1].y() - pts[0].y()) * (pts[2].x() - pts[0].x())) < 0:
+                pts.reverse()
+            path.addPolygon(QPolygonF(pts))
+            path.closeSubpath()
+        # merge the triangles, then widen the shape by half a pixel all round, which keeps the
+        # thin outlines as bold as the in-game map once the overlay scales the image down;
+        # filled in one pass so translucent colours don't show the triangle edges
+        shape = path.simplified()
+        qp.fillPath(shape.united(stroker.createStroke(shape)), QColor(*color))
 
     for k, r in rooms.items():
         seen = explored is None or k in explored
@@ -315,4 +348,5 @@ def render_floor(world, floor, explored=None, current=None, max_px=1400, show_un
         if not seen and not show_unexplored:
             continue
         draw(r["outline"] + r["icons"], (CURRENT if k == current else LINE) if seen else LINE_UNEXPLORED)
+    qp.end()
     return img, (lambda x, z: ((x - x0) * s, (z - z0) * s))
