@@ -12,3 +12,7 @@ captures/
 scan_state/
 *.npz
 *.bin
+
+# third-person camera: game files extracted from your own disc, and your camera settings
+game/
+loi_cam.json
