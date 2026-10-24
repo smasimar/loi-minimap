@@ -120,67 +120,9 @@ Optional, in `tools/`. Close `loi_tools.py` first, since they need the PINE conn
 
 ## How it works
 
-### Minimap
-
-- **The maps** come from the disc's `FILEDATA.BIN`, a chain of packages (magic `0x82734927`)
-  holding (id, type, offset, size) entries. Each area has a map package with a **room table**
-  (type 16) and a **map model** (type 14).
-  - **Room table:** one 0x60-byte record per room.
-    - `+0x00` game area id
-    - `+0x01` room number
-    - `+0x02` floor (signed)
-    - `+0x08` flags (low bits 2/3 = save/warp room)
-    - `+0x1A`/`+0x1E` outline/fill node ids
-    - `+0x40` room origin and, at `+0x4C`, rotation in radians
-    - `+0x50` scale
-  - **Map model:** PS2 VIF packet data. Each node has a vertex pool (int32 x/y/z, map units ×16)
-    and a triangle-strip index list (`index = value/4 − 1`, bit 15 = "don't draw").
-  - Most areas store the room shapes already placed on the map. Anti-Soul Mysteries Lab stores
-    them in room coordinates, and they're placed by origin and rotation.
-- **The player** is read live from Leon's actor. Position and facing are in room coordinates and are placed on the
-  map with `origin + R(rotation) · local · 1.6`.
-- **Explored rooms** come from the game state. It holds one 12-byte record per room, area after
-  area; byte +0 is non-zero once the room is explored. The memory card save uses the same layout.
-- **Room changes:** the room number switches about 1.3 s before the position does. The arrow
-  holds its last position and facing until the new position arrives.
-
-### Camera
-
-- `0x792880` points to the active camera struct (`0x792890` during gameplay). The tool copies that
-  struct to free RAM (`0x1F80000`) and points `0x792880` at the copy. It then writes an orbit eye
-  and look-at each tick, and the game builds the view from them. Nothing races the game, so there
-  is no jitter.
-- The orbit pivots on Leon's actor position (`0xB63430`) plus 300 units of head height, because
-  the game's follow logic stops while the pointer is redirected.
-- **Right stick:** the two loads that fetch rx/ry for `FillPlayerInput` (`0x416438`) are patched to
-  the centred value 0x80, and R3 (`0x0400`) is masked out of the held buttons it passes on
-  (`0x4164DC`), so the game never sees the right stick or R3. The patch is lifted while the
-  map or a menu is open (flag `0x738EAC`). The real stick is read from libpad's buffers, which are
-  found by signature at startup.
-- **Map and menus:** `SetActiveCamera` (`0x65C018`) is patched so the game's "back to gameplay
-  camera" call selects the free camera directly. The orbit resumes where it was when a menu closes.
-- **Cutscenes and doors:** if the pointer moves to another camera (cutscene, event), the tool
-  steps aside and takes over again when the gameplay camera returns. After a handover or a door,
-  it swings behind Leon (facing at `0xB63470`).
-- Quitting restores the original instructions and camera pointer.
-
-### Memory addresses (SLUS-20733)
-
-| Address | Type | Meaning |
-|---|---|---|
-| `0x738E94` | u8 | game area id: 0 HoSR, 1 Anti-Soul Lab, 2 Dark Palace, 3 Garden, 4/6/7 Castle Entrance parts, 5 Pagoda, 8 Theatre |
-| `0x738E96` | u8 | room number within the area |
-| `0x734E12` | u8 | 1 while the map or pause menu is open |
-| `0x738EAC` | u32 | non-zero while the map screen or Start menu is open |
-| `0xB63430` | f32×3 | Leon's position (room coordinates); the camera system mirrors it at `0x792A30` |
-| `0xB63474` | f32 | Leon's facing, radians (room coordinates); mirrored at `0x792A54` |
-| `0x8060B8` | u32 | pointer to the last loaded save copy; the live game state is 0x4690 bytes before it |
-| live state + `0xF44` | 12 B × room | per-room records, area after area (74, 55, 57, 65, 4, 55, 6, 10, 58 rooms); byte +0 ≠ 0 = explored |
-| `0x792880` | u32 | active camera pointer |
-| `0x792890` | 0x1A0 B | gameplay camera struct (`loitools/camera/addrs.py` lists the offsets) |
-
-The memory card save (`BASLUS-20733cvps2us`) holds the same per-room records; its slots are
-0x21D0 bytes apart.
+The [wiki](https://github.com/smasimar/loi-tools/wiki/How-it-works) explains how the maps are decoded
+from the disc, how the player and explored rooms are read, what the free camera patches in the game,
+and lists the memory addresses it uses.
 
 ## Project layout
 
