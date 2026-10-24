@@ -242,30 +242,32 @@ def inside_room(r, x, z, margin=0):
     return any(cv2.pointPolygonTest(t, (float(x), float(z)), True) > -margin for t in tris)
 
 
-def best_orientation(r, samples):
-    """Pick the (rot, mirror) that keeps the most observed positions inside the room's shape.
-
-    Returns ((rot, mirror), inside_fraction) or (None, 0).
-    """
+def path_inside(r, samples, rot):
+    """Fraction of observed room-local positions that land inside the room's shape with `rot`."""
     import cv2
-    if len(samples) < 8:
-        return None, 0.0
     tris = [np.array(t, np.float32) for t in r["fill"]]
     x0, z0, x1, z1 = r["bbox"]
-    best, score = None, -1.0
-    for mirror in (False, True):
-        for rot in range(4):
-            inside = 0
-            for x, z in samples:
-                px, pz = place(r, x, z, rot, mirror)
-                if not (x0 - 200 <= px <= x1 + 200 and z0 - 200 <= pz <= z1 + 200):
-                    continue
-                if any(cv2.pointPolygonTest(t, (px, pz), True) > -150 for t in tris):
-                    inside += 1
-            frac = inside / len(samples)
-            if frac > score:
-                best, score = (rot, mirror), frac
-    return best, score
+    inside = 0
+    for x, z in samples:
+        px, pz = place(r, x, z, rot, False)
+        if x0 - 200 <= px <= x1 + 200 and z0 - 200 <= pz <= z1 + 200 and                 any(cv2.pointPolygonTest(t, (px, pz), True) > -150 for t in tris):
+            inside += 1
+    return inside / len(samples)
+
+
+def check_orientation(r, samples):
+    """Safety net for the room record's rotation. The game never mirrors rooms, so only the four
+    rotations are candidates, and the record wins unless it clearly fails while another clearly fits.
+
+    Returns (rot override or None, record_fit, best_fit), or None with too few samples.
+    """
+    if len(samples) < 8:
+        return None
+    fits = [path_inside(r, samples, rot) for rot in range(4)]
+    own = fits[r["rot"]]
+    best = max(range(4), key=fits.__getitem__)
+    override = best if own < 0.7 and fits[best] >= 0.9 else None
+    return override, own, fits[best]
 
 
 FILL = (16, 40, 225, 255)          # explored room, in-game blue

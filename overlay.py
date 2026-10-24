@@ -343,12 +343,14 @@ class Overlay(QWidget):
             return
         sm.append([round(st["x"], 1), round(st["z"], 1)])
         if len(sm) in (8, 12, 16, 24, 32, 48, 64, 80):
-            best, score = gamemap.best_orientation(r, sm)
-            if best:
-                old = rec.get("orient")
-                rec["orient"], rec["score"] = list(best), round(score, 3)
-                if old != list(best):
-                    self.flash(f"room {key[1]}: map orientation {best} ({score:.0%} of path inside)", 5)
+            res = gamemap.check_orientation(r, sm)
+            if res:
+                override, own, best = res
+                old = rec.get("override")
+                rec["override"], rec["fit"] = override, round(own, 3)
+                if override is not None and override != old:
+                    self.flash(f"room {key[1]}: rotation corrected to {override} "
+                               f"({best:.0%} of path inside vs {own:.0%})", 5)
         save_json(ORIENT_FILE, self.orient)
 
     def read_explored(self, st):
@@ -399,9 +401,10 @@ class Overlay(QWidget):
             save_json(HEADING_FILE, {"convention": self.heading, "votes": self.heading_votes})
 
     def room_orient(self, area, room):
+        """(rot, mirror) if walking showed the room record's rotation to be wrong, else None."""
         rec = self.orient.get(f"{area}:{room}")
-        if rec and rec.get("orient") and rec.get("score", 0) >= 0.85:
-            return tuple(rec["orient"])
+        if rec and rec.get("override") is not None:
+            return (rec["override"], False)
         return None
 
     # --- drawing ---------------------------------------------------------------
