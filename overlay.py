@@ -185,7 +185,7 @@ class Overlay(QWidget):
         self.visited = {k: set(v) for k, v in load_json(VISITED_FILE, {}).items()}  # area -> rooms
         self.orient = load_json(ORIENT_FILE, {})  # "area:room" -> {"samples", "orient", "score"}
         self.room_since = (None, 0.0)  # (area, room) and when we entered it
-        self.last_good = None  # (area, floor, x, z, time) of the last position inside its room
+        self.last_good = None  # (area, floor, x, z, time, facing) of the last position inside its room
         self.switch = None  # ((area, room), x, z, time) at the last room change while x/z are stale
         h = load_json(HEADING_FILE, {})
         self.heading = h.get("convention", 0)        # index into gamemap.HEADINGS
@@ -453,13 +453,13 @@ class Overlay(QWidget):
         inside = not stale and gamemap.inside_room(room, mx, mz, margin=400)
         mode = "live"
         if inside:
-            self.last_good = (st["world"], floor, mx, mz, now)
+            self.last_good = (st["world"], floor, mx, mz, now, facing)
         elif self.last_good and (stale or now - self.last_good[4] < 2.0):
-            a0, f0, gx, gz, _ = self.last_good
+            a0, f0, gx, gz, _, gfacing = self.last_good
             if (a0, f0) != (st["world"], floor):
                 self.trace(st, raw, inside, "hidden", None)
                 return qi, None, None, ""
-            mx, mz = gx, gz
+            mx, mz, facing = gx, gz, gfacing  # the facing is stale too: hold both
             mode = "held"
         elif stale:  # never draw a stale position
             self.trace(st, raw, inside, "hidden", None)
