@@ -20,9 +20,8 @@ By default the overlay draws the game's **own map data**, decoded from your LoI 
 
 Each map package has a room table (game area id, room number, floor, save-room flag, room origin
 and scale) and a VIF model with every room's fill and outline. The player's room-local position
-(RAM) is placed with `origin + R * local * 1.6`; the quarter turn R follows from which corner of
-the room's shape the origin sits on, and is confirmed per room from where you walk
-(`data/orient.json`). Explored rooms come from the game's own flags (see below); if those can't be
+(RAM) is placed with `origin + R * local * 1.6`, where R is the room's rotation from its record
+(+0x4C, radians); it is double-checked per room against where you walk (`data/orient.json`). Explored rooms come from the game's own flags (see below); if those can't be
 read, the overlay falls back to the rooms it has seen you in (`data/visited.json`).
 
 Some maps (Anti-Soul Mysteries Lab) store room shapes in room-local coordinates; those rooms are
