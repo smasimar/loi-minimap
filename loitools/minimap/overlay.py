@@ -505,5 +505,5 @@ class Overlay(QWidget):
         if time.time() < self.status_until:
             footer = self.status
         if self.cfg["show_status"]:
-            outlined_text(p, QRectF(8, H - footer_h - 2, W - 16, footer_h), Qt.AlignLeft | Qt.AlignVCenter, footer)
+            outlined_text(p, QRectF(8, H - footer_h - 2, W - 16, footer_h), Qt.AlignRight | Qt.AlignVCenter, footer)
         p.end()
