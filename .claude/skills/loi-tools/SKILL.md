@@ -104,8 +104,10 @@ the eye from distance/pitch/yaw and stops building the view from the eye).
   Entrance 6:0, 6:1). Keys: first record `"a:r"`, others `"a:r@floor"`; every record has `"key"`.
   `pick_record`: records whose shape contains Leon, then by height: the lower floor is at y = 0,
   the upper one above a switch height (`FLOOR_SWITCH_Y` = -1100 default; `FLOOR_SWITCH_Y_ROOM`
-  per room: 6:0 = -3630 and 6:1 = -3810, spiral staircases 0 (B1F) to -7600 (1F) and 0 (B2F)
-  to -7530 (B1F); on 6:1 Leon is inside both records' shapes all along, so height decides).
+  per room). The three long spiral staircases - Castle Entrance 6:0 (B1F/1F), 6:1 (B2F/B1F) and
+  Garden 3:50 (1F/2F) - run from 0 to about -7600 and switch halfway: `STAIRCASE_SWITCH_Y` =
+  -3800 (measured -3630 to -3810). On 6:1 Leon is inside both records' shapes all along, so height
+  decides there too. These five are all the multi-floor rooms in the game data.
   New odd rooms: log Leon's y while the user walks it, with a hotkey (Ctrl+Q) to mark the spot
   where the in-game map switches.
   No game "current floor" variable was found (two rounds of floor-labelled snapshots, map open
