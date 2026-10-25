@@ -32,10 +32,10 @@ ADDR_MENU = 0x734E12        # u8  1 while the map or pause menu is open
 ADDR_SCREEN = 0x738EAC      # u32 non-zero while the map screen, Start menu or shop is open
 # Rooms on two floors: the lower floor is at y = 0 and Leon is on the upper one above the switch
 # height (y is negative up). Ghostly Theatre rooms 8 and 16 have their upper level at -2200 and
-# below; Castle Entrance room 0 is a spiral staircase from 0 (B1F) to -7600 (1F), and the in-game
-# map switches floors at about -3630.
+# below. Castle Entrance rooms 0 and 1 are spiral staircases, 0 (B1F) to -7600 (1F) and 0 (B2F)
+# to -7530 (B1F); the in-game map switches floors at about -3630 and -3810.
 FLOOR_SWITCH_Y = -1100.0
-FLOOR_SWITCH_Y_ROOM = {(6, 0): -3630.0}
+FLOOR_SWITCH_Y_ROOM = {(6, 0): -3630.0, (6, 1): -3810.0}
 # Leon's actor (static). 0x792A30 / 0x792A54 hold the same values, but they belong to the camera
 # system, which stops updating while the free camera has the camera redirected.
 ADDR_POS = 0xB63430         # f32 x, y, z  player position, room-local coordinates
