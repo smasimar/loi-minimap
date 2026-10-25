@@ -4,7 +4,7 @@ Each area ("world") has a map package with
   * a type-16 room table: per room a 0x60-byte record
       +0x00 game area id (as in RAM; one map can hold several areas)
       +0x01 room number          +0x02 floor (s8: 0 = 1F, -1 = B1F, ...)
-      +0x08 flags (low bits 2/3: red save/warp room)
+      +0x08 flags (low bits 2/3: red save/warp room; bit 7: not drawn on the map)
       +0x10..0x18 node counts (u16 each) for the five groups whose ids (4 bytes each) follow:
       +0x1A outline  +0x1E fill  +0x22 sub-weapon spots  +0x26 locked doors  +0x2A labels
       (floor-change labels and the "S" start point)
@@ -31,7 +31,7 @@ import numpy as np
 from .. import DATA_DIR
 
 CACHE = os.path.join(DATA_DIR, "gamemap")
-CACHE_VERSION = 10  # bump when decode_world's output changes, so the maps are extracted again
+CACHE_VERSION = 11  # bump when decode_world's output changes, so the maps are extracted again
 LOCAL_SCALE = 1.6  # mesh units per room-local unit
 
 
@@ -193,6 +193,9 @@ def decode_world(table, model, mesh_dir=1):
         rooms[key if key not in rooms else f"{key}@{floor}"] = {
             "key": key, "area": r[0], "room": r[1], "floor": floor,
             "red": (r[8] & 7) in (2, 3),
+            # bit 7: not on the in-game map (only House of Sacred Remains room 0, a round room
+            # laid over room 72)
+            "hidden": bool(r[8] & 0x80),
             "origin": origin, "angle": angle, "rot": int(round(angle / (math.pi / 2))) % 4,
             "scale": [sx, sz],
             "bbox": [int(x0), int(z0), int(x1), int(z1)],
@@ -467,7 +470,7 @@ def render_floor(world, floor, explored=None, current=None, max_px=1400, show_un
     """
     from PySide6.QtCore import QPointF, Qt
     from PySide6.QtGui import QColor, QImage, QPainter, QPainterPath, QPainterPathStroker, QPolygonF
-    rooms = {k: r for k, r in world["rooms"].items() if r["floor"] == floor}
+    rooms = {k: r for k, r in world["rooms"].items() if r["floor"] == floor and not r["hidden"]}
     pts = np.array([p for r in rooms.values()
                     for t in r["fill"] + r["outline"] + [t for lab in r["labels"] for t in lab] for p in t])
     (x0, z0), (x1, z1) = pts.min(0), pts.max(0)

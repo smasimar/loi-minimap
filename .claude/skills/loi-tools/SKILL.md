@@ -91,7 +91,8 @@ the eye from distance/pitch/yaw and stops building the view from the eye).
 ## Minimap internals
 
 - Maps come from `FILEDATA.BIN` packages (magic `0x82734927`): type 16 room table (0x60-byte
-  records: area, room, floor s8, flags, outline/fill node ids, origin xyz + angle at `+0x40`,
+  records: area, room, floor s8, flags at `+0x08` (low bits 2/3 save/warp, bit 7 not drawn on
+  the map - only 0:0, a round room over 0:72), node groups, origin xyz + angle at `+0x40`,
   scale at `+0x50`) and type 14 VIF model. Cached as JSON in `data/gamemap/`;
   bump `gamemap.CACHE_VERSION` whenever `decode_world`'s output changes.
 - Placement: `map = origin + R(angle) · (x·sx, −z·sz) · 1.6`. **Use the record's exact angle** -
