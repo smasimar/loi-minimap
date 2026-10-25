@@ -114,9 +114,21 @@ the eye from distance/pitch/yaw and stops building the view from the eye).
   and closed); the map screen probably derives it on open.
 - Door transitions: room id switches ~1.3 s before the position; hold the last good position and
   facing while the position is unchanged since the switch.
+- **Map markers**: record `+0x10..0x18` = five u16 node counts, ids at `+0x1A` outline, `+0x1E`
+  fill, `+0x22` sub-weapon spots, `+0x26` locked doors, `+0x2A` labels (floor-change labels,
+  "S" start point, small marks). Drawn in `render_floor`: spots = yellow disc in a white rim (one
+  node can hold several circles - split with `_components`); locks = red bar across the corridor
+  (`_lock_bar`, hidden by `_lock_opened` once the room behind is explored; key colour comes from
+  the texture, not decoded); floor labels = just the arrow (`_arrow_parts` / `_label_arrow`:
+  the one isolated triangle; text is on its far side from the exit), purple, outlined, moved out.
+  Anti-Soul Lab (local-coordinate map) stores icon glyphs at (0, 0) with no position anywhere:
+  `_place_local_icons` places them by rules, plus `LOCAL_SPOTS` measured from in-game map
+  screenshots (fit scale/offset from corridor walls, then convert icon pixel positions). The
+  in-game map is an unrotated, uniformly scaled view, so screenshots can be measured that way.
 - Overlay attaches only to a window whose title has "Lament of Innocence" **and** whose process
   exe starts with `pcsx2` (a browser tab matched before). Hidden while `0x734E12` or `0x738EAC`.
 - Status line (right-aligned): `area A room R 2F` (floor 0 = 1F, −1 = B1F).
+- Player arrow: half size on the whole-floor view, full size zoomed.
 
 ## Camera internals
 

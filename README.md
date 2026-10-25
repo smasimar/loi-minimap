@@ -52,7 +52,9 @@ data is kept, not the disc.
 
 It shows the floor you're on, drawn like the in-game map. Explored rooms are blue, save and warp
 rooms are red, unexplored rooms are dimmed, and your current room is outlined in yellow. A red
-arrow shows your position and facing. Floors and areas switch automatically, also inside rooms that
+arrow shows your position and facing. The map's markers are drawn too: yellow discs for sub-weapon
+pickups, red bars for locked doors (gone once the room behind is explored), purple arrows at exits
+to another floor, and the "S" start point. Floors and areas switch automatically, also inside rooms that
 span two floors, and the overlay hides while a menu, the shop or the map screen is open. The line
 under the map shows the area, room and floor (e.g. `area 8 room 16 2F`, named like the in-game map).
 

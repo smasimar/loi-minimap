@@ -513,7 +513,7 @@ class Overlay(QWidget):
                 mx = dst.x() + (pos[0] - src.x()) * s
                 my = dst.y() + (pos[1] - src.y()) * s
                 pulse = 0.5 + 0.5 * math.sin(time.time() * 6)
-                rad = max(5, H / 30)
+                rad = max(5, H / 30) if self.cfg["zoom"] else max(3, H / 60)  # half size on the whole floor
                 p.setBrush(Qt.NoBrush)
                 p.setPen(QPen(QColor(255, 80, 80, int(160 * pulse)), 2))
                 p.drawEllipse(QPointF(mx, my), rad * 1.9, rad * 1.9)
