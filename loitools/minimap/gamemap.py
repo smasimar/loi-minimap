@@ -31,7 +31,7 @@ import numpy as np
 from .. import DATA_DIR
 
 CACHE = os.path.join(DATA_DIR, "gamemap")
-CACHE_VERSION = 11  # bump when decode_world's output changes, so the maps are extracted again
+CACHE_VERSION = 12  # bump when decode_world's output changes, so the maps are extracted again
 LOCAL_SCALE = 1.6  # mesh units per room-local unit
 
 
@@ -166,6 +166,11 @@ def decode_world(table, model, mesh_dir=1):
                  for name, n_at, ids in (("markers", 0x14, 0x22), ("locks", 0x16, 0x26))}
         # labels stay one list per node: each is text plus its own arrow (see _label_arrow)
         icons["labels"] = [t for t in (_tris(nodes.get(v, [])) for v in r[0x2A:0x2A + r[0x18]]) if t]
+        # A boss door's skull (Castle Entrance room 2: one shape of 71 triangles, plus a small bar)
+        # is stored with the labels; show it as a locked door. ("S" is one shape of 26.)
+        if any(len(t) > 40 and len(_components(t)) == 1 for t in icons["labels"]):
+            icons["locks"] += [tri for t in icons["labels"] for tri in t]
+            icons["labels"] = []
         px, _, pz, angle = struct.unpack_from("<4f", r, 0x40)
         sx, _, sz = struct.unpack_from("<3f", r, 0x50)
         raw.append((r, fill, outline, icons, [px * 16, -pz * 16], angle, sx or 1.0, sz or 1.0))

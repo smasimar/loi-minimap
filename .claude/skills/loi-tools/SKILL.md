@@ -120,7 +120,8 @@ the eye from distance/pitch/yaw and stops building the view from the eye).
   "S" start point, small marks). Drawn in `render_floor`: spots = yellow disc in a white rim (one
   node can hold several circles - split with `_components`); locks = red bar across the corridor
   (`_lock_bar`, hidden by `_lock_opened` once the room behind is explored; key colour comes from
-  the texture, not decoded); floor labels = just the arrow (`_arrow_parts` / `_label_arrow`:
+  the texture, not decoded; the boss-door skull of Castle Entrance 6:2 is stored as a label - one
+  shape of >40 triangles - and is moved to the locks in `decode_world`); floor labels = just the arrow (`_arrow_parts` / `_label_arrow`:
   the one isolated triangle; text is on its far side from the exit), purple, outlined, moved out.
   Anti-Soul Lab (local-coordinate map) stores icon glyphs at (0, 0) with no position anywhere:
   `_place_local_icons` places them by rules, plus `LOCAL_SPOTS` measured from in-game map
