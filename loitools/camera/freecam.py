@@ -82,6 +82,7 @@ class FreeCam:
         i_leon = b.read_floats(addrs.LEON_POS, 3)
         i_rot = b.read_floats(addrs.LEON_ROT, 3)
         i_map = b.read_u32(addrs.MAP_OPEN)
+        i_frame = b.read_u32(addrs.FRAME_COUNTER)
         i_follow = {c: b.read_u32(c + addrs.CAM_FOLLOWING) for c in (addrs.GAMEPLAY_CAM, addrs.SCRATCH_CAM)}
         i_pads = [b.read_bytes(a, 8) for a in self.pad_addrs]
         r = b.run()
@@ -96,7 +97,7 @@ class FreeCam:
         ptr = r[i_ptr]
         # a cutscene drives the active camera itself (see addrs.CAM_FOLLOWING)
         cutscene = ptr in i_follow and (r[i_follow[ptr]] & 0xFF) == 0
-        return ptr, r[i_leon], r[i_rot][1], st, r[i_map] != 0, cutscene
+        return ptr, r[i_leon], r[i_rot][1], st, r[i_map] != 0, cutscene, r[i_frame]
 
     def write(self, eye, look):
         b = self.p.batch()
@@ -162,10 +163,12 @@ class App:
 
     def tick(self, now):
         cam, args = self.cam, self.args
-        dt = 0.0 if self.last is None else min(now - self.last, 0.1)
-        self.last = now
-
-        ptr, leon, facing, st, map_open, cutscene = cam.poll()
+        ptr, leon, facing, st, map_open, cutscene, frame = cam.poll()
+        # Step the orbit on game frames, not wall-clock time: the game draws each frame with the
+        # last camera written, so a camera moving between frames shows up as jitter on Leon.
+        frames = 0 if self.last is None else (frame - self.last) & 0xFFFFFFFF
+        self.last = frame
+        dt = min(frames / addrs.FRAME_RATE, 0.1)
         follow = follow_point(leon)
 
         # The map screen (scrolling) and the realtime Orb / Relic menus (held L1 / L2) need the
@@ -245,7 +248,7 @@ class App:
             else:
                 cam.orbit.place_behind(facing)
 
-        if cam.active:
+        if cam.active and frames:
             eye, look = cam.orbit.update(dt, st.rx, st.ry, follow)
             cam.write(eye, look)
             if args.verbose and now - self.last_log > 0.5:

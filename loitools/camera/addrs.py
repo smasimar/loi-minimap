@@ -54,6 +54,11 @@ STICKS_PREV = 0xA09A0C
 # through 0x453080 / 0x453090. Item/equipment quick menu and gameplay leave it 0.
 MAP_OPEN = 0x738EAC
 
+# u32, +1 per game frame (60/s) since boot. The camera steps once per frame on it, so the view
+# and Leon move in lockstep (stepping on wall-clock time made Leon jitter on screen).
+FRAME_COUNTER = 0x736370
+FRAME_RATE = 60.0
+
 # Free RAM inside the unused heap top (0x1D5A000-0x1FED000 stays zero in gameplay).
 SCRATCH_CAM = 0x1F80000
 

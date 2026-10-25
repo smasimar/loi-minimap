@@ -74,6 +74,7 @@ Dependencies: numpy and PySide6 only.
 | `0xB63430` | f32×3 | Leon's position, room coordinates, y = height (negative up) |
 | `0xB63474` | f32 | Leon's facing (Y of the rotation vec at `0xB63470`) |
 | `0x792A30` / `0x792A54` | | camera-system copies of position/facing - **freeze while CAM_PTR is redirected**; don't use |
+| `0x736370` | u32 | frame counter, +1 per game frame (60/s) since boot |
 | `0x8060B8` | u32 | last loaded save copy; live game state = value + 4 − 0x4690 |
 | live state + `0xF44` | 12 B × room | explored records, areas in order (74,55,57,65,10,49,6,10,58 - area 4 keeps 10 records though its map has rooms 0-3); byte 0 ≠ 0 = explored |
 | `0x792880` | u32 | CAM_PTR, active camera (`0x792890` gameplay, `0x792C80` map screen) |
@@ -116,8 +117,12 @@ the eye from distance/pitch/yaw and stops building the view from the eye).
 ## Camera internals
 
 - Engage: copy the gameplay struct's first 0x1A0 bytes into `0x1F80000`, **zero the rest up to
-  0x3F0**, point CAM_PTR at it; each tick write eye/look/focal and hold `+0x3E0` = 0. The game
-  builds the view from that copy.
+  0x3F0**, point CAM_PTR at it; write eye/look/focal and hold `+0x3E0` = 0. The game builds the
+  view from that copy.
+- **Step on game frames, not wall-clock time**: the loop polls at 240 Hz but only updates the
+  orbit (dt = frames / 60) and writes when the frame counter `0x736370` changes. Stepping on
+  wall-clock time made Leon jitter on screen, since each frame caught the camera mid-glide.
+  Verified at normal speed, 50% and turbo.
 - Patches (`patches.py`): rx/ry loads at `0x4165B8`/`0x4165D4` → `0x80`; R3 masked at `0x4164DC`
   (`andi a1,s7,0xffff` → `0xfbff`); `SetActiveCamera` at `0x65C018` rewritten so camera 0 selects
   the free camera. The stick patch is lifted while `0x738EAC` is set or L1/L2 is held (realtime
