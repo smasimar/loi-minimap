@@ -75,7 +75,7 @@ Dependencies: numpy and PySide6 only.
 | `0xB63474` | f32 | Leon's facing (Y of the rotation vec at `0xB63470`) |
 | `0x792A30` / `0x792A54` | | camera-system copies of position/facing - **freeze while CAM_PTR is redirected**; don't use |
 | `0x8060B8` | u32 | last loaded save copy; live game state = value + 4 − 0x4690 |
-| live state + `0xF44` | 12 B × room | explored records, areas in order (74,55,57,65,4,55,6,10,58); byte 0 ≠ 0 = explored |
+| live state + `0xF44` | 12 B × room | explored records, areas in order (74,55,57,65,10,49,6,10,58 - area 4 keeps 10 records though its map has rooms 0-3); byte 0 ≠ 0 = explored |
 | `0x792880` | u32 | CAM_PTR, active camera (`0x792890` gameplay, `0x792C80` map screen) |
 | `0x792890` | 0x3F0 B | gameplay camera struct (cameras are 0x3F0 apart) |
 | `0x1F80000` | 0x3F0 B | free RAM used for the free camera's copy (nothing else uses it, map open or not) |

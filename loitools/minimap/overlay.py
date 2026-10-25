@@ -47,7 +47,8 @@ ADDR_YAW = 0xB63474         # f32 player facing (radians, room-local)
 ADDR_SAVE_PTR = 0x8060B8
 LIVE_FROM_SAVE_PTR = 4 - 0x4690
 ROOM_TABLE = 0xF44                              # first room record (area 0, room 0)
-AREA_ROOMS = [74, 55, 57, 65, 4, 55, 6, 10, 58]  # records per game area id 0..8
+AREA_ROOMS = [74, 55, 57, 65, 10, 49, 6, 10, 58]  # records per game area id 0..8 (area 4's map
+                                                  # has rooms 0-3 only, but it keeps 10 records)
 RECORD = 12
 
 DEFAULTS = {
