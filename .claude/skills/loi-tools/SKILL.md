@@ -128,7 +128,8 @@ the eye from distance/pitch/yaw and stops building the view from the eye).
   screenshots (fit scale/offset from corridor walls, then convert icon pixel positions). The
   in-game map is an unrotated, uniformly scaled view, so screenshots can be measured that way.
 - Overlay attaches only to a window whose title has "Lament of Innocence" **and** whose process
-  exe starts with `pcsx2` (a browser tab matched before). Hidden while `0x734E12` or `0x738EAC`.
+  exe starts with `pcsx2` (a browser tab matched before). Hidden while `0x734E12` or `0x738EAC`, and in rooms with no map data
+  (e.g. the final boss arena, area 5 room 41).
 - Status line (right-aligned): `area A room R 2F` (floor 0 = 1F, −1 = B1F).
 - Player arrow: half size on the whole-floor view, full size zoomed.
 

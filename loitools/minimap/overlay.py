@@ -243,8 +243,10 @@ class Overlay(QWidget):
         st = self.game.read()
         self.state = st
         # stay visible without game data so a connection problem shows up as a message
+        # hidden in menus and in rooms the game's map doesn't cover (e.g. the final boss arena)
         visible = (self.enabled and self.top_hwnd is not None
-                   and not window.is_minimized(self.top_hwnd) and not (st and st["menu"]))
+                   and not window.is_minimized(self.top_hwnd) and not (st and st["menu"])
+                   and not (st and self.gm.room(st["world"], st["room"]) is None))
         if visible and self.cfg["hide_when_unfocused"]:
             visible = user32.GetForegroundWindow() == self.top_hwnd
 

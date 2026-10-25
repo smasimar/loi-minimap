@@ -55,7 +55,8 @@ rooms are red, unexplored rooms are dimmed, and your current room is outlined in
 arrow shows your position and facing. The map's markers are drawn too: yellow discs for sub-weapon
 pickups, red bars for locked doors (gone once the room behind is explored), purple arrows at exits
 to another floor, and the "S" start point. Floors and areas switch automatically, also inside rooms that
-span two floors, and the overlay hides while a menu, the shop or the map screen is open. The line
+span two floors, and the overlay hides while a menu, the shop or the map screen is open, and in
+rooms the in-game map doesn't cover (like the final boss arena). The line
 under the map shows the area, room and floor (e.g. `area 8 room 16 2F`, named like the in-game map).
 
 **Hotkeys** (hold **Ctrl+Shift**):
